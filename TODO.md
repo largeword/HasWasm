@@ -1,0 +1,20 @@
+to be implemented:
+t.const
+t.unop
+t.binop
+t.testop
+t.relop
+block
+loop
+if-else
+br
+br_if
+return
+call
+t.set_local
+t.get_local
+t.set_global
+t.get_global
+func
+global
+module

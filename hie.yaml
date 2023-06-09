@@ -1,0 +1,10 @@
+cradle:
+  cabal:
+    - path: "src"
+      component: "lib:haswasm"
+
+    - path: "app/Main.hs"
+      component: "haswasm:exe:haswasm"
+
+    - path: "test"
+      component: "haswasm:test:haswasm-test"
