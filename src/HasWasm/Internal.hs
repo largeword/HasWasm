@@ -6,7 +6,7 @@
 module HasWasm.Internal  (
   I32, F32,
   BaseType(..),
-  StackT(..),
+  StackT,
   Stack,
   (:+),
   Instr(..),
@@ -20,6 +20,7 @@ module HasWasm.Internal  (
   Var(..),
   VarTypes(..),
   WasmFunc(..),
+  WasmFuncT(..),
   createFunction,
   ReturnInstr,
   FuncBody,
@@ -31,7 +32,7 @@ import Data.Kind
 data I32 = I32
 data F32 = F32
 
-data TypeTag = I32T | F32T
+data TypeTag = I32T | F32T deriving (Show, Eq)
 
 class BaseType t where
   tag :: t -> TypeTag
@@ -45,9 +46,7 @@ instance BaseType F32 where
   tag _ = F32T
   val = F32
 
-data StackT s t where
-  Empty :: StackT () ()
-  Cons :: (Stack s, BaseType t) => s -> t -> StackT s t
+data (Stack s, BaseType t) => StackT s t
 
 type s :+ t = StackT s t
 infixl 2 :+
@@ -57,8 +56,8 @@ type family Stack (s :: Type) :: Constraint where
 
 {- Types -}
 
-data BinOp = ADD | SUB | MUL | DIV
-data UnOp = NEG
+data BinOp = ADD | SUB | MUL | DIV deriving (Show, Eq)
+data UnOp = NEG deriving (Show, Eq)
 
 data Instr =
   Sequence [Instr] |
@@ -71,7 +70,7 @@ data Instr =
   Block (LabelId -> Instr) |
   Branch LabelId |
   BranchIf LabelId |
-  Call WasmFuncObj |
+  Call WasmFuncT |
   Return |
   LocalGet Int |
   LocalSet Int
@@ -100,19 +99,19 @@ untype (TypedInstr i) = i
 newtype (BaseType t) => Var t = Var Int
 
 data WasmFunc p v r where
-  WasmFunc :: (VarTypes p, VarTypes v, VarTypes r) => (p, v, r) -> WasmFuncObj -> WasmFunc p v r
+  WasmFunc :: (VarTypes p, VarTypes v, VarTypes r) => (p, v, r) -> WasmFuncT -> WasmFunc p v r
 
-data WasmFuncObj = WasmFuncObj String [TypeTag] [TypeTag] [TypeTag] Instr
+data WasmFuncT = WasmFuncT String [TypeTag] [TypeTag] [TypeTag] (() -> Instr)
 
-type FuncBody r s = TypedInstr s (StackType r s)
-type ReturnInstr r s = forall s2. TypedInstr (StackType r s) s2
-type FuncCallType p r s = TypedInstr (StackType p s) (StackType r s)
+type FuncBody s r = TypedInstr s (StackType r s)
+type ReturnInstr s r = forall s2. TypedInstr (StackType r s) s2
+type FuncCallType s p r = TypedInstr (StackType p s) (StackType r s)
 
 createFunction :: (VarTypes p, VarTypes v, VarTypes r) =>
-  String -> (VarSet p -> VarSet v -> ReturnInstr r (StackT s t) -> FuncBody r (StackT s t)) -> WasmFunc p v r
+  String -> (VarSet p -> VarSet v -> ReturnInstr (StackT s t) r -> FuncBody (StackT s t) r) -> WasmFunc p v r
 
 createFunction name body =
-  WasmFunc proxy $ WasmFuncObj name (typetags p) (typetags v) (typetags r) (untype $ funcbody)
+  WasmFunc proxy $ WasmFuncT name (typetags p) (typetags v) (typetags r) (\_ -> untype funcbody)
   where
     proxy@(p, v, r) = (value, value, value)
     (params, n1) = (genvar p 0)

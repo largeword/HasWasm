@@ -11,6 +11,7 @@ module HasWasm (
 
   -- instructions
   (#),
+  createFunction,
   i32_const,
   i32_add,
   i32_sub,
@@ -21,12 +22,27 @@ module HasWasm (
   br_if,
   call,
   local_get,
-  local_set
+  local_set,
+
+  printFunc
 ) where
 
 import HasWasm.Internal
+import Control.Monad.State
+import Data.Map ( Map )
 
 {- WASM Module -}
+
+data WasmModule = WasmModule (Map String Declaration)
+
+data Declaration = FuncDecl Bool WasmFuncT | GlobalVar
+
+data BuilderContext = BuilderContext {mod :: WasmModule}
+
+type ModuleBuilder = State BuilderContext
+
+addFunc :: Bool -> WasmFunc p v r -> Declaration
+addFunc exported (WasmFunc _ func) = FuncDecl exported func
 
 {- WASM Instructions -}
 
@@ -54,8 +70,8 @@ block body = TypedInstr $ Block (untype . body . TypedLabel)
 loop :: (Stack s1, Stack s2) => (TypedLabel s1 -> TypedInstr s1 s2) -> TypedInstr s1 s2
 loop body = TypedInstr $ Block (untype . body . TypedLabel)
 
-call :: (VarTypes p, VarTypes v, VarTypes r) => WasmFunc p v r -> FuncCallType p r s
-call (WasmFunc _ obj) = TypedInstr $ Call obj
+call :: (Stack s, VarTypes p, VarTypes v, VarTypes r) => WasmFunc p v r -> FuncCallType s p r
+call (WasmFunc _ func) = TypedInstr $ Call func
 
 local_get :: (Stack s) => Var t -> TypedInstr s (s :+ t)
 local_get (Var i) = TypedInstr $ LocalGet i
@@ -71,27 +87,32 @@ i32_binary op = TypedInstr (I32Binary op)
 i32_unary :: (Stack s) => UnOp -> TypedInstr (s :+ I32) (s :+ I32)
 i32_unary op = TypedInstr (I32Unary op)
 
--- test1 :: WasmFunc () () (I32, I32)
--- test1 = createFunction "test" $ \_ _ ret -> (
---     i32_const 1 #
---     i32_const 2 #
---     i32_const 3 #
---     i32_add #
---     block (\lbl ->
---       i32_const 0 #
---       br_if lbl #
---       block (\lbl2 ->
---         i32_const 1 #
---         i32_neg #
---         br_if lbl2 #
---         br lbl #
---         ret
---       )
---     )
---   )
 
--- test :: WasmFunc (I32, I32) () I32
--- test = createFunction "test" func
---   where
---     func :: (Stack s) => (Var I32, Var I32) -> () -> ReturnInstr I32 s -> FuncBody I32 s
---     func (i, j) v ret = i32_const 1 # i32_const 1 # i32_add
+printFunc :: WasmFunc p v r -> String
+printFunc (WasmFunc _ (WasmFuncT name _ _ _ f)) =
+  let body = f () in
+    "func " ++ name ++ " " ++ evalState (printInstr body) 0
+
+printInstr :: Instr -> State Int String
+printInstr (Sequence instrs) =
+  foldl go (return "") $ map printInstr instrs
+  where
+    go acc m = do s1 <- acc; s2 <- m; return (s1 ++ s2 ++ " ")
+printInstr (I32Const i) = return $ "i32_const " ++ show i
+printInstr (I32Binary b) = return $ "i32_binary " ++ show b
+printInstr (I32Unary u) = return $ "i32_unary " ++ show u
+printInstr (F32Const f ) = return $ "f32_const " ++ show f
+printInstr (F32Binary b ) = return $ "f32_binary " ++ show b
+printInstr (F32Unary u ) = return $ "f32_unary " ++ show u
+printInstr (Block f ) =
+  do
+    n <- get
+    put (n+1)
+    s <- printInstr $ f n
+    return $ "block " ++ show n ++ " " ++ s ++ "end"
+printInstr (Branch l ) = return $ "br " ++ show l
+printInstr (BranchIf l) = return $ "br_if " ++ show l
+printInstr (Call (WasmFuncT name _ _ _ _) ) = return $ "call " ++ name
+printInstr (Return ) = return "return"
+printInstr (LocalGet i ) = return $ "local_get " ++ show i
+printInstr (LocalSet i) = return $ "local_set " ++ show i
