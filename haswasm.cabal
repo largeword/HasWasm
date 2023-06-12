@@ -58,10 +58,12 @@ library
     import:           warnings
 
     -- Modules exported by the library.
-    exposed-modules:  MyLib
+    exposed-modules:
+        HasWasm
 
     -- Modules included in this library but not exported.
-    -- other-modules:
+    other-modules:
+        HasWasm.Internal
 
     -- LANGUAGE extensions used by modules in this package.
     -- other-extensions:
