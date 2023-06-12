@@ -4,7 +4,7 @@
 module HasWasm (
   -- exposed types and helper functions
   I32, F32,
-  StackType, (:+),
+  Stack, (:+),
   TypedInstr,
 
   -- instructions
@@ -14,6 +14,7 @@ module HasWasm (
   i32_sub,
   i32_neg,
   block,
+  loop,
   br,
   br_if,
 
@@ -25,36 +26,39 @@ import HasWasm.Internal
 
 {- WASM Instructions -}
 
-i32_const :: (StackType s) => Int -> TypedInstr s (s :+ I32)
+i32_const :: (Stack s) => Int -> TypedInstr s (s :+ I32)
 i32_const i = TypedInstr (I32Const i)
 
-i32_add :: (StackType s) => TypedInstr (s :+ I32 :+ I32) (s :+ I32)
+i32_add :: (Stack s) => TypedInstr (s :+ I32 :+ I32) (s :+ I32)
 i32_add = i32_binary ADD
 
-i32_sub :: (StackType s) => TypedInstr (s :+ I32 :+ I32) (s :+ I32)
+i32_sub :: (Stack s) => TypedInstr (s :+ I32 :+ I32) (s :+ I32)
 i32_sub = i32_binary SUB
 
-i32_neg :: (StackType s) => TypedInstr (s :+ I32) (s :+ I32)
+i32_neg :: (Stack s) => TypedInstr (s :+ I32) (s :+ I32)
 i32_neg = i32_unary NEG
 
-br :: (StackType s1, StackType s2) => TypedLabel s1 -> TypedInstr s1 s2
+br :: (Stack s1, Stack s2) => TypedLabel s1 -> TypedInstr s1 s2
 br (TypedLabel l) = TypedInstr (Branch l)
 
-br_if :: (StackType s) => TypedLabel s -> TypedInstr (s :+ I32) s
+br_if :: (Stack s) => TypedLabel s -> TypedInstr (s :+ I32) s
 br_if (TypedLabel l) = TypedInstr (BranchIf l)
 
-block :: (StackType s1, StackType s2) => (TypedLabel s2 -> TypedInstr s1 s2) -> TypedInstr s1 s2
+block :: (Stack s1, Stack s2) => (TypedLabel s2 -> TypedInstr s1 s2) -> TypedInstr s1 s2
 block body = TypedInstr $ Block (untype . body . TypedLabel)
+
+loop :: (Stack s1, Stack s2) => (TypedLabel s1 -> TypedInstr s1 s2) -> TypedInstr s1 s2
+loop body = TypedInstr $ Block (untype . body . TypedLabel)
 
 {- Helper Instructions -}
 
-i32_binary :: (StackType s) => BinOp -> TypedInstr (s :+ I32 :+ I32) (s :+ I32)
+i32_binary :: (Stack s) => BinOp -> TypedInstr (s :+ I32 :+ I32) (s :+ I32)
 i32_binary op = TypedInstr (I32Binary op)
 
-i32_unary :: (StackType s) => UnOp -> TypedInstr (s :+ I32) (s :+ I32)
+i32_unary :: (Stack s) => UnOp -> TypedInstr (s :+ I32) (s :+ I32)
 i32_unary op = TypedInstr (I32Unary op)
 
--- test :: (StackType s) => TypedInstr s (s :+ I32 :+ I32)
+-- test :: (Stack s) => TypedInstr s (s :+ I32 :+ I32)
 -- test =
 --   i32_const 1 #
 --   i32_const 2 #
