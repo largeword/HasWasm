@@ -1,4 +1,5 @@
 {-# LANGUAGE TypeOperators #-}
+{-# LANGUAGE AllowAmbiguousTypes #-}
 
 -- most of the constructors from internal should NOT be exported!
 module HasWasm (
@@ -17,7 +18,7 @@ module HasWasm (
   loop,
   br,
   br_if,
-
+  call
 ) where
 
 import HasWasm.Internal
@@ -50,6 +51,9 @@ block body = TypedInstr $ Block (untype . body . TypedLabel)
 loop :: (Stack s1, Stack s2) => (TypedLabel s1 -> TypedInstr s1 s2) -> TypedInstr s1 s2
 loop body = TypedInstr $ Block (untype . body . TypedLabel)
 
+call :: (VarTypes p, VarTypes v, VarTypes r) => WasmFunc p v r -> FuncCallType p r s
+call (WasmFunc _ obj) = TypedInstr $ Call obj
+
 {- Helper Instructions -}
 
 i32_binary :: (Stack s) => BinOp -> TypedInstr (s :+ I32 :+ I32) (s :+ I32)
@@ -58,19 +62,27 @@ i32_binary op = TypedInstr (I32Binary op)
 i32_unary :: (Stack s) => UnOp -> TypedInstr (s :+ I32) (s :+ I32)
 i32_unary op = TypedInstr (I32Unary op)
 
--- test :: (Stack s) => TypedInstr s (s :+ I32 :+ I32)
--- test =
---   i32_const 1 #
---   i32_const 2 #
---   i32_const 3 #
---   i32_add #
---   block (\lbl ->
---     i32_const 0 #
---     br_if lbl #
---     block (\lbl2 ->
---       i32_const 1 #
---       i32_neg #
---       br_if lbl2 #
---       br lbl
+-- test :: WasmFunc () () (I32, I32)
+-- test = createFunction "test" $ \_ _ ret -> (
+--     i32_const 1 #
+--     i32_const 2 #
+--     i32_const 3 #
+--     i32_add #
+--     block (\lbl ->
+--       i32_const 0 #
+--       br_if lbl #
+--       block (\lbl2 ->
+--         i32_const 1 #
+--         i32_neg #
+--         br_if lbl2 #
+--         br lbl #
+--         ret
+--       )
 --     )
 --   )
+
+-- test :: WasmFunc (I32, I32) () I32
+-- test = createFunction "test" func
+--   where
+--     func :: (Stack s) => (Var I32, Var I32) -> () -> ReturnInstr I32 s -> FuncBody I32 s
+--     func (i, j) v ret = i32_const 1 # i32_const 1 # i32_add
