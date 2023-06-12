@@ -6,7 +6,8 @@ module HasWasm (
   -- exposed types and helper functions
   I32, F32,
   Stack, (:+),
-  TypedInstr,
+  TypedInstr, WasmFunc,
+  Var, ReturnInstr, FuncBody,
 
   -- instructions
   (#),
@@ -18,7 +19,9 @@ module HasWasm (
   loop,
   br,
   br_if,
-  call
+  call,
+  local_get,
+  local_set
 ) where
 
 import HasWasm.Internal
@@ -54,6 +57,12 @@ loop body = TypedInstr $ Block (untype . body . TypedLabel)
 call :: (VarTypes p, VarTypes v, VarTypes r) => WasmFunc p v r -> FuncCallType p r s
 call (WasmFunc _ obj) = TypedInstr $ Call obj
 
+local_get :: (Stack s) => Var t -> TypedInstr s (s :+ t)
+local_get (Var i) = TypedInstr $ LocalGet i
+
+local_set :: (Stack s) => Var t -> TypedInstr (s :+ t) s
+local_set (Var i) = TypedInstr $ LocalSet i
+
 {- Helper Instructions -}
 
 i32_binary :: (Stack s) => BinOp -> TypedInstr (s :+ I32 :+ I32) (s :+ I32)
@@ -62,8 +71,8 @@ i32_binary op = TypedInstr (I32Binary op)
 i32_unary :: (Stack s) => UnOp -> TypedInstr (s :+ I32) (s :+ I32)
 i32_unary op = TypedInstr (I32Unary op)
 
--- test :: WasmFunc () () (I32, I32)
--- test = createFunction "test" $ \_ _ ret -> (
+-- test1 :: WasmFunc () () (I32, I32)
+-- test1 = createFunction "test" $ \_ _ ret -> (
 --     i32_const 1 #
 --     i32_const 2 #
 --     i32_const 3 #

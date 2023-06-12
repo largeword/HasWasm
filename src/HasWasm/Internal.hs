@@ -1,10 +1,7 @@
 {-# LANGUAGE GADTs #-}
-{-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE RankNTypes #-}
-{-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE TypeOperators #-}
-{-# LANGUAGE DataKinds #-}
 
 module HasWasm.Internal  (
   I32, F32,
@@ -28,6 +25,8 @@ module HasWasm.Internal  (
   FuncBody,
   FuncCallType,
 ) where
+
+import Data.Kind
 
 data I32 = I32
 data F32 = F32
@@ -53,8 +52,8 @@ data StackT s t where
 type s :+ t = StackT s t
 infixl 2 :+
 
-class Stack s where
-instance Stack (StackT s t) where
+type family Stack (s :: Type) :: Constraint where
+  Stack (StackT s t) = ()
 
 {- Types -}
 
@@ -73,7 +72,9 @@ data Instr =
   Branch LabelId |
   BranchIf LabelId |
   Call WasmFuncObj |
-  Return
+  Return |
+  LocalGet Int |
+  LocalSet Int
 
 newtype (Stack a, Stack b) => TypedInstr a b = TypedInstr Instr
 
