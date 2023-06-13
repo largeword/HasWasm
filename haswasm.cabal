@@ -72,7 +72,8 @@ library
     build-depends:
         base,
         mtl,
-        containers
+        containers,
+        transformers
 
     -- Directories containing source files.
     hs-source-dirs:   src

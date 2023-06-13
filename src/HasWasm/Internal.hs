@@ -2,9 +2,11 @@
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE TypeOperators #-}
+{-# LANGUAGE StandaloneDeriving #-}
+{-# LANGUAGE AllowAmbiguousTypes #-}
 
 module HasWasm.Internal  (
-  I32, F32,
+  I32(..), F32(..), TypeTag(..),
   BaseType(..),
   StackT,
   Stack,
@@ -25,6 +27,7 @@ module HasWasm.Internal  (
   ReturnInstr,
   FuncBody,
   FuncCallType,
+  StackType,
 ) where
 
 import Data.Kind
@@ -32,7 +35,7 @@ import Data.Kind
 data I32 = I32
 data F32 = F32
 
-data TypeTag = I32T | F32T deriving (Show, Eq)
+data TypeTag = I32T | F32T
 
 class BaseType t where
   tag :: t -> TypeTag
@@ -56,8 +59,8 @@ type family Stack (s :: Type) :: Constraint where
 
 {- Types -}
 
-data BinOp = ADD | SUB | MUL | DIV deriving (Show, Eq)
-data UnOp = NEG deriving (Show, Eq)
+data BinOp = ADD | SUB | MUL | DIV
+data UnOp = NEG
 
 data Instr =
   Sequence [Instr] |
@@ -67,7 +70,7 @@ data Instr =
   F32Const Float |
   F32Binary BinOp |
   F32Unary UnOp |
-  Block (LabelId -> Instr) |
+  Block Bool [TypeTag] [TypeTag] (LabelId -> Instr) |
   Branch LabelId |
   BranchIf LabelId |
   Call WasmFuncT |
@@ -101,7 +104,7 @@ newtype (BaseType t) => Var t = Var Int
 data WasmFunc p v r where
   WasmFunc :: (VarTypes p, VarTypes v, VarTypes r) => (p, v, r) -> WasmFuncT -> WasmFunc p v r
 
-data WasmFuncT = WasmFuncT String [TypeTag] [TypeTag] [TypeTag] (() -> Instr)
+data WasmFuncT = WasmFuncT String [TypeTag] [TypeTag] [TypeTag] (Instr)
 
 type FuncBody s r = TypedInstr s (StackType r s)
 type ReturnInstr s r = forall s2. TypedInstr (StackType r s) s2
@@ -111,7 +114,7 @@ createFunction :: (VarTypes p, VarTypes v, VarTypes r) =>
   String -> (VarSet p -> VarSet v -> ReturnInstr (StackT s t) r -> FuncBody (StackT s t) r) -> WasmFunc p v r
 
 createFunction name body =
-  WasmFunc proxy $ WasmFuncT name (typetags p) (typetags v) (typetags r) (\_ -> untype funcbody)
+  WasmFunc proxy $ WasmFuncT name (typetags p) (typetags v) (typetags r) (untype funcbody)
   where
     proxy@(p, v, r) = (value, value, value)
     (params, n1) = (genvar p 0)
@@ -178,3 +181,22 @@ type family StackType t s where
   StackType (t1, t2, t3) s = s :+ t1 :+ t2 :+ t3
   StackType (t1, t2, t3, t4) s = s :+ t1 :+ t2 :+ t3 :+ t4
   StackType (t1, t2, t3, t4, t5) s = s :+ t1 :+ t2 :+ t3 :+ t4 :+ t5
+
+{- Show & Eq Instances -}
+
+deriving instance Eq TypeTag
+deriving instance Eq BinOp
+deriving instance Eq UnOp
+
+instance Show TypeTag where
+  show I32T = "i32"
+  show F32T = "f32"
+
+instance Show BinOp where
+  show ADD = "add"
+  show SUB = "sub"
+  show MUL = "mul"
+  show DIV = "div"
+
+instance Show UnOp where
+  show NEG = "neg"

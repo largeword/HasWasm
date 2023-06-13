@@ -5,20 +5,43 @@ import HasWasm
 main :: IO ()
 main = do
   putStrLn $ printFunc fact
+  putStrLn $ printFunc rgb
   putStrLn $ printFunc test1
+
+myModule = createModule $ do
+  addFunc rgb True
+  addFunc fact True
+
+rgb :: WasmFunc (I32, I32, I32) () I32
+rgb = createFunction "rgb" func
+  where
+  func (r, g, b) _ _ =
+    local_get r #
+    i32_const 256 #
+    i32_mul #
+    local_get g #
+    i32_add #
+    i32_const 256 #
+    i32_mul #
+    local_get b #
+    i32_add
 
 fact :: WasmFunc I32 () I32
 fact = createFunction "factorial" func
   where
   func n _ ret =
     local_get n #
-    block (\lbl ->
+    block I32 () (\lbl ->
       br_if lbl #
       i32_const 1 #
       ret
     ) #
     local_get n #
-    call fact
+    local_get n #
+    i32_const 1 #
+    i32_sub #
+    call fact #
+    i32_mul
 
 test1 :: WasmFunc () () (I32, I32)
 test1 = createFunction "test1" $ \_ _ ret -> (
@@ -26,12 +49,11 @@ test1 = createFunction "test1" $ \_ _ ret -> (
     i32_const 2 #
     i32_const 3 #
     i32_add #
-    block (\lbl ->
+    block () () (\lbl ->
       i32_const 0 #
       br_if lbl #
-      block (\lbl2 ->
+      block () () (\lbl2 ->
         i32_const 1 #
-        i32_neg #
         br_if lbl2 #
         br lbl #
         ret
