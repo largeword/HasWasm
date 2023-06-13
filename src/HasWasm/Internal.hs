@@ -31,6 +31,7 @@ module HasWasm.Internal  (
 ) where
 
 import Data.Kind
+import Data.Sequence
 
 data I32 = I32
 data F32 = F32
@@ -63,7 +64,7 @@ data BinOp = ADD | SUB | MUL | DIV
 data UnOp = NEG
 
 data Instr =
-  Sequence [Instr] |
+  Sequence (Seq Instr) |
   I32Const Int |
   I32Binary BinOp |
   I32Unary UnOp |
@@ -84,10 +85,10 @@ type LabelId = Int
 newtype (Stack s) => TypedLabel s = TypedLabel LabelId
 
 join :: Instr -> Instr -> Instr
-join (Sequence s1) (Sequence s2) = Sequence (s1 ++ s2)
-join (Sequence s) i = Sequence (s ++ [i])
-join i (Sequence s) = Sequence (i : s)
-join i1 i2 = Sequence [i1, i2]
+join (Sequence s1) (Sequence s2) = Sequence (s1 >< s2)
+join (Sequence s) i = Sequence (s |> i)
+join i (Sequence s) = Sequence (i <| s)
+join i1 i2 = Sequence (i1 <| i2 <| empty)
 
 (#) :: TypedInstr a b -> TypedInstr b c -> TypedInstr a c
 (TypedInstr i1) # (TypedInstr i2) = TypedInstr (join i1 i2)

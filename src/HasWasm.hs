@@ -166,7 +166,7 @@ newPrintState = PrintState {labelid = 0, tabs = 1}
 
 printInstr :: Instr -> State PrintState String
 printInstr (Sequence instrs) =
-  foldl go (return "") $ map printInstr instrs
+  foldl go (return "") $ fmap printInstr instrs
   where
     go :: State PrintState String -> State PrintState String -> State PrintState String
     go acc m = do
