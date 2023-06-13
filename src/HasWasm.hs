@@ -138,49 +138,49 @@ i32_binary op = TypedInstr (I32Binary op)
 i32_unary :: (Stack s) => UnOp -> TypedInstr (s :+ I32) (s :+ I32)
 i32_unary op = TypedInstr (I32Unary op)
 
-printFunc :: WasmFunc p v r -> String
+printFunc :: WasmFunc p v r -> ShowS
 printFunc (WasmFunc _ (WasmFuncT name params locals results body)) =
-  "(func " ++ printFuncName name ++ " " ++
-  (printVars "param" params) ++
-  (printVars "result" results) ++
-  (printVars "local" locals) ++ "\n" ++
-  evalState (printInstr body) newPrintState ++ ")"
+  ("(func " ++) . printFuncName name . (" " ++) .
+  (printVars "param" params) .
+  (printVars "result" results) .
+  (printVars "local" locals) . ("\n" ++) .
+  evalState (printInstr body) newPrintState . (")" ++)
 
-printFuncName :: String -> String
-printFuncName name = "$" ++ name
+printFuncName :: String -> ShowS
+printFuncName name = ("$" ++) . (name ++)
 
-printVars :: String -> [TypeTag] -> String
-printVars _ [] = ""
-printVars prefix tags = "(" ++ prefix ++ (concat $ map showtag tags) ++ ") "
+printVars :: String -> [TypeTag] -> ShowS
+printVars _ [] = id
+printVars prefix tags = ("(" ++) . (prefix ++) . (foldr (.) id $ map showtag tags) . (") " ++)
   where
-    showtag tag =  " " ++ show tag
+    showtag tag =  (" " ++) . shows tag
 
 data PrintState = PrintState {labelid :: Int, tabs :: Int}
 
-printTabs :: Int -> String
-printTabs 0 = ""
-printTabs n = "  " ++ printTabs (n-1)
+printTabs :: Int -> ShowS
+printTabs 0 = id
+printTabs n = ("  " ++) . printTabs (n-1)
 
 newPrintState :: PrintState
 newPrintState = PrintState {labelid = 0, tabs = 1}
 
-printInstr :: Instr -> State PrintState String
+printInstr :: Instr -> State PrintState ShowS
 printInstr (Sequence instrs) =
-  foldl go (return "") $ fmap printInstr instrs
+  foldl go (pure id) $ fmap printInstr instrs
   where
-    go :: State PrintState String -> State PrintState String -> State PrintState String
+    go :: State PrintState ShowS -> State PrintState ShowS -> State PrintState ShowS
     go acc m = do
       s1 <- acc
       s2 <- m
       tab <- gets tabs
-      return (s1 ++ (printTabs tab) ++ s2 ++ "\n")
+      return $ s1 . (printTabs tab) . s2 . ("\n" ++)
 
-printInstr (I32Const i) = return $ "i32.const " ++ show i
-printInstr (I32Binary b) = return $ "i32." ++ show b
-printInstr (I32Unary u) = return $ "i32." ++ show u
-printInstr (F32Const f ) = return $ "f32.const " ++ show f
-printInstr (F32Binary b ) = return $ "f32." ++ show b
-printInstr (F32Unary u ) = return $ "f32." ++ show u
+printInstr (I32Const i) = return $ ("i32.const " ++) . shows i
+printInstr (I32Binary b) = return $ ("i32." ++) . shows b
+printInstr (I32Unary u) = return $ ("i32." ++) . shows u
+printInstr (F32Const f ) = return $ ("f32.const " ++) . shows f
+printInstr (F32Binary b ) = return $ ("f32." ++) . shows b
+printInstr (F32Unary u ) = return $ ("f32." ++) . shows u
 printInstr (Block isLoop params results f ) =
   do
     ctx <- get
@@ -193,15 +193,16 @@ printInstr (Block isLoop params results f ) =
     let prefix = if isLoop then "(loop " else "(block "
 
     return $
-      prefix ++ printLabel n ++ " " ++
-      (printVars "param" params) ++
-      (printVars "result" results) ++ "\n" ++ s ++  (printTabs t) ++ ")"
-printInstr (Branch l ) = return $ "br " ++ printLabel l
-printInstr (BranchIf l) = return $ "br_if " ++ printLabel l
-printInstr (Call (WasmFuncT name _ _ _ _) ) = return $ "call " ++ printFuncName name
-printInstr (Return ) = return "return"
-printInstr (LocalGet i ) = return $ "local.get " ++ show i
-printInstr (LocalSet i) = return $ "local.set " ++ show i
+      (prefix ++) . printLabel n . (" " ++) .
+      (printVars "param" params) .
+      (printVars "result" results) . ("\n" ++) . s . (printTabs t) . (")" ++)
 
-printLabel :: Int -> String
-printLabel n = "$l" ++ show n
+printInstr (Branch l ) = return $ ("br " ++) . printLabel l
+printInstr (BranchIf l) = return $ ("br_if " ++) . printLabel l
+printInstr (Call (WasmFuncT name _ _ _ _) ) = return $ ("call " ++) . printFuncName name
+printInstr (Return ) = return ("return" ++)
+printInstr (LocalGet i) = return $ ("local.get " ++) . shows i
+printInstr (LocalSet i) = return $ ("local.set " ++) . shows i
+
+printLabel :: Int -> ShowS
+printLabel n = ("$l" ++) . shows n

@@ -4,15 +4,15 @@ import HasWasm
 
 main :: IO ()
 main = do
-  putStrLn $ printFunc fact
-  putStrLn $ printFunc rgb
-  putStrLn $ printFunc test1
+  putStrLn $ printFunc fact ""
+  putStrLn $ printFunc rgb ""
+  putStrLn $ printFunc test1 ""
 
 myModule = createModule $ do
   addFunc rgb True
   addFunc fact True
 
-rgb :: WasmFunc (I32, I32, I32) () I32
+rgb :: WasmFunc (I32, I32, I32) (I32) I32
 rgb = createFunction "rgb" func
   where
   func (r, g, b) _ _ =
