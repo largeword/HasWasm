@@ -31,6 +31,8 @@ module HasWasm.Instruction (
   -- variables
   local_get,
   local_set,
+  global_get,
+  global_set
 ) where
 
 import HasWasm.Internal
@@ -93,6 +95,12 @@ local_get (Var i) = TypedInstr $ LocalGet i
 
 local_set :: (Stack s) => Var t -> TypedInstr (s :+ t) s
 local_set (Var i) = TypedInstr $ LocalSet i
+
+global_get :: (Mutability m, Stack s) => GlobalVar m t -> TypedInstr s (s :+ t)
+global_get (GlobalVar _ name _ _) = TypedInstr $ GlobalGet name
+
+global_set :: (Stack s) => GlobalVar Mut t -> TypedInstr (s :+ t) s
+global_set (GlobalVar _ name _ _) = TypedInstr $ GlobalSet name
 
 {- Helper Instructions -}
 

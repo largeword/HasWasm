@@ -4,13 +4,16 @@ module HasWasm (
   I32(..), F32(..),
   Stack, (:+),
   TypedInstr, WasmFunc,
-  Var, ReturnInstr, FuncBody,
+  Var, GlobalVar, Mut(..), Imm(..),
+  ReturnInstr, FuncBody,
   WasmModule, WasmModuleT,
 
   -- module building
   createModule,
-  addFunc,
+  addFunc, addGlobal,
   buildModule,
+  createGlobalI32,
+  createGlobalF32,
   createFunction,
   createExpFunction,
   createLocalFunction,
@@ -28,7 +31,7 @@ import qualified Data.Map as Map
 type WasmModule = Either String WasmModuleT
 data WasmModuleT = WasmModuleT {declarations :: Map String Declaration, exports :: Map String ExportDecl}
 
-data Declaration = FuncDecl WasmFuncT | GlobalVar
+data Declaration = FuncDecl WasmFuncT | GlobalDecl String (Maybe String) Bool InitValue
 type ExportDecl = (ExportType, String)
 data ExportType = ExpFunc | ExpGlobal
 
@@ -77,6 +80,20 @@ addFunc (WasmFunc _ func@(WasmFuncT name expname _ _ _ _)) = do
       mod <- gets wasmmod
       updateMod (addExport name (ExpFunc, ename) mod)
 
+addGlobal :: (Mutability m) => GlobalVar m t -> ModuleBuilder ()
+addGlobal (GlobalVar mut name expname init) = do
+  let decl = GlobalDecl name expname (isMutable mut) init
+  mod <- gets wasmmod
+  case findIn declarations name mod of
+    Just _ -> throwE $ "Name is already declared: " ++ name
+    Nothing -> updateMod (addDeclaration name decl mod)
+
+  case expname of
+    Nothing -> return ()
+    Just ename -> do
+      mod <- gets wasmmod
+      updateMod (addExport name (ExpGlobal, ename) mod)
+
 {- Print to WAT Functions -}
 
 buildModule :: WasmModule -> Either String String
@@ -110,7 +127,13 @@ printDeclarations = Map.foldr go id
 
 printDeclaration :: Declaration -> ShowS
 printDeclaration (FuncDecl f) = printFunc f
-printDeclaration (GlobalVar) = id -- TODO:
+printDeclaration (GlobalDecl name _  mut init) =
+  printModuleTab . ("(global " ++) . printName name . showinit init . ("))\n" ++)
+  where
+    showinit (InitI i) = ismut mut "i32" . (" (i32.const " ++) . shows i
+    showinit (InitF f) = ismut mut "f32" . (" (f32.const " ++) . shows f
+    ismut True t = (" (mut " ++) . (t ++) . (")" ++)
+    ismut False t = (" " ++) . (t ++)
 
 printFunc :: WasmFuncT -> ShowS
 printFunc (WasmFuncT name _ params locals results body) =
@@ -184,6 +207,8 @@ printInstr (Call (WasmFuncT name _ _ _ _ _) ) = return $ ("call " ++) . printNam
 printInstr (Return ) = return ("return" ++)
 printInstr (LocalGet i) = return $ ("local.get " ++) . shows i
 printInstr (LocalSet i) = return $ ("local.set " ++) . shows i
+printInstr (GlobalGet name) = return $ ("global.get " ++) . printName name
+printInstr (GlobalSet name) = return $ ("global.set " ++) . printName name
 
 printLabel :: Int -> ShowS
 printLabel n = ("$l" ++) . shows n

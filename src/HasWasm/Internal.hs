@@ -4,6 +4,7 @@
 {-# LANGUAGE TypeOperators #-}
 {-# LANGUAGE StandaloneDeriving #-}
 {-# LANGUAGE AllowAmbiguousTypes #-}
+{-# LANGUAGE FlexibleInstances #-}
 
 module HasWasm.Internal  (
   I32(..), F32(..), TypeTag(..),
@@ -23,11 +24,18 @@ module HasWasm.Internal  (
   untype,
   Var(..),
   VarTypes(..),
+  InitValue(..),
+  Mut(..), Imm(..),
+  Mutability,
+  isMutable,
+  GlobalVar(..),
   WasmFunc(..),
   WasmFuncT(..),
   createFunction,
   createExpFunction,
   createLocalFunction,
+  createGlobalI32,
+  createGlobalF32,
   ReturnInstr,
   FuncBody,
   FuncCallType,
@@ -84,7 +92,9 @@ data Instr =
   Call WasmFuncT |
   Return |
   LocalGet Int |
-  LocalSet Int
+  LocalSet Int |
+  GlobalGet String |
+  GlobalSet String
 
 newtype (Stack a, Stack b) => TypedInstr a b = TypedInstr Instr
 
@@ -105,9 +115,34 @@ infixl 0 #
 untype :: TypedInstr a b -> Instr
 untype (TypedInstr i) = i
 
-{- Function Types -}
+{- Var and Function Types -}
 
 newtype (BaseType t) => Var t = Var Int
+
+data (Mutability m, BaseType t) => GlobalVar m t = GlobalVar m String (Maybe String) InitValue
+
+createGlobalI32 :: (Mutability m) => String -> Maybe String -> Int -> GlobalVar m I32
+createGlobalI32 name expname val = GlobalVar mval name expname (InitI val)
+
+createGlobalF32 :: (Mutability m) => String -> Maybe String -> Float -> GlobalVar m F32
+createGlobalF32 name expname val = GlobalVar mval name expname (InitF val)
+
+data InitValue = InitI Int | InitF Float
+
+data Mut = Mut
+data Imm = Imm
+
+class Mutability m where
+  isMutable :: m -> Bool
+  mval :: m
+
+instance Mutability Mut where
+  isMutable _ = True
+  mval = Mut
+
+instance Mutability Imm where
+  isMutable _ = False
+  mval = Imm
 
 data WasmFunc p v r where
   WasmFunc :: (VarTypes p, VarTypes v, VarTypes r) => (p, v, r) -> WasmFuncT -> WasmFunc p v r

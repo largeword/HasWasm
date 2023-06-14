@@ -12,8 +12,9 @@ main = do
 
 myModule :: WasmModule
 myModule = createModule $ do
-  addFunc add3
-  addFunc rgb
+  addFunc addCounter
+  addGlobal counter
+  addGlobal immvar
 
 myModule1 :: WasmModule
 myModule1 = createModule $ do
@@ -24,7 +25,29 @@ myModule2 = createModule $ do
   addFunc rgb
   addFunc add3
 
--- it should be that myModule ~~ myModule1 ~~ myModule2
+myModule3 :: WasmModule
+myModule3 = createModule $ do
+  addFunc add3
+  addFunc rgb
+
+-- it should be that myModule1 ~~ myModule2 ~~ myModule3
+
+counter :: GlobalVar Mut I32
+counter = createGlobalI32 "counter" (Just "counter") 0
+
+immvar :: GlobalVar Imm I32
+immvar = createGlobalI32 "immvar" Nothing 0
+
+addCounter :: WasmFunc (I32) () ()
+addCounter = createExpFunction "addCounter" func
+  where
+  func i _ _ =
+    global_get counter #
+    global_get immvar #
+    local_get i #
+    i32_add #
+    i32_add #
+    global_set counter
 
 add3 :: WasmFunc (I32, I32, I32) () I32
 add3 = createExpFunction "add3" funcbody
