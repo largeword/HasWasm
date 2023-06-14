@@ -60,6 +60,7 @@ library
     -- Modules exported by the library.
     exposed-modules:
         HasWasm,
+        HasWasm.Instruction,
         HasWasm.Internal
 
     -- Modules included in this library but not exported.

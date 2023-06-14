@@ -90,7 +90,7 @@ join (Sequence s) i = Sequence (s |> i)
 join i (Sequence s) = Sequence (i <| s)
 join i1 i2 = Sequence (i1 <| i2 <| empty)
 
-(#) :: TypedInstr a b -> TypedInstr b c -> TypedInstr a c
+(#) :: (Stack a, Stack b, Stack c) => TypedInstr a b -> TypedInstr b c -> TypedInstr a c
 (TypedInstr i1) # (TypedInstr i2) = TypedInstr (join i1 i2)
 
 infixl 0 #

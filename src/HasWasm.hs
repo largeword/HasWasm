@@ -1,6 +1,3 @@
-{-# LANGUAGE TypeOperators #-}
-{-# LANGUAGE AllowAmbiguousTypes #-}
-
 -- most of the constructors from internal should NOT be exported!
 module HasWasm (
   -- exposed types and helper functions
@@ -8,27 +5,13 @@ module HasWasm (
   Stack, (:+),
   TypedInstr, WasmFunc,
   Var, ReturnInstr, FuncBody,
+  WasmModule, WasmModuleT,
 
   -- module building
   createModule,
   addFunc,
-
-  -- instructions
-  (#),
+  buildModule,
   createFunction,
-  i32_const,
-  i32_add,
-  i32_sub,
-  i32_mul,
-  block,
-  loop,
-  br,
-  br_if,
-  call,
-  local_get,
-  local_set,
-
-  printFunc
 ) where
 
 import HasWasm.Internal
@@ -40,37 +23,40 @@ import qualified Data.Map as Map
 
 {- WASM Module -}
 
-data WasmModule = WasmModule {declarations :: Map String Declaration, exports :: Map String String}
-
-findIn :: (WasmModule -> Map String a) -> String -> WasmModule -> Maybe a
-findIn getf key mod = Map.lookup key (getf mod)
-
-addDeclaration :: String -> Declaration -> WasmModule -> WasmModule
-addDeclaration key val mod = mod {declarations = Map.insert key val (declarations mod)}
-
-addExport :: String -> String -> WasmModule -> WasmModule
-addExport key val mod = mod {exports = Map.insert key val (exports mod)}
+type WasmModule = Either String WasmModuleT
+data WasmModuleT = WasmModuleT {declarations :: Map String Declaration, exports :: Map String ExportDecl}
 
 data Declaration = FuncDecl WasmFuncT | GlobalVar
+type ExportDecl = (ExportType, String)
+data ExportType = ExpFunc | ExpGlobal
 
-data BuilderContext = BuilderContext {wasmmod :: WasmModule}
+findIn :: (WasmModuleT -> Map String a) -> String -> WasmModuleT -> Maybe a
+findIn getf key mod = Map.lookup key (getf mod)
 
-newWasmModule :: WasmModule
-newWasmModule = WasmModule {declarations = Map.empty, exports = Map.empty}
+addDeclaration :: String -> Declaration -> WasmModuleT -> WasmModuleT
+addDeclaration key val mod = mod {declarations = Map.insert key val (declarations mod)}
+
+addExport :: String -> ExportDecl -> WasmModuleT -> WasmModuleT
+addExport key val mod = mod {exports = Map.insert key val (exports mod)}
+
+data BuilderContext = BuilderContext {wasmmod :: WasmModuleT}
+
+newWasmModule :: WasmModuleT
+newWasmModule = WasmModuleT {declarations = Map.empty, exports = Map.empty}
 
 newCtx :: BuilderContext
 newCtx = BuilderContext { wasmmod = newWasmModule}
 
 type ModuleBuilder = ExceptT String (State BuilderContext)
 
-createModule :: ModuleBuilder () -> Either String WasmModule
+createModule :: ModuleBuilder () -> Either String WasmModuleT
 createModule b =
   let (result, ctx) = runState (runExceptT b) newCtx in
     case result of
       Right _ -> Right (wasmmod ctx)
       Left e -> Left e
 
-updateMod :: WasmModule -> ModuleBuilder ()
+updateMod :: WasmModuleT -> ModuleBuilder ()
 updateMod mod = do
   ctx <- get
   put ctx {wasmmod = mod}
@@ -86,68 +72,58 @@ addFunc (WasmFunc _ func) exported = do
 
   if exported then do
     mod <- gets wasmmod
-    updateMod (addExport name name mod)
+    updateMod (addExport name (ExpFunc, name) mod)
   else return ()
 
 funcName :: WasmFuncT -> String
 funcName (WasmFuncT name _ _ _ _) = name
 
-{- WASM Instructions -}
+{- Print to WAT Functions -}
 
-i32_const :: (Stack s) => Int -> TypedInstr s (s :+ I32)
-i32_const i = TypedInstr (I32Const i)
+buildModule :: WasmModule -> Either String String
+buildModule mod = fmap (runShows . go) mod
+  where
+    go mod =
+      ("(module \n" ++) .
+      printExports (exports mod) .
+      printDeclarations (declarations mod) .
+      (")\n" ++)
 
-i32_add :: (Stack s) => TypedInstr (s :+ I32 :+ I32) (s :+ I32)
-i32_add = i32_binary ADD
+runShows :: (String -> String) -> String
+runShows f = f ""
 
-i32_sub :: (Stack s) => TypedInstr (s :+ I32 :+ I32) (s :+ I32)
-i32_sub = i32_binary SUB
+printExports :: Map String ExportDecl -> ShowS
+printExports = Map.foldrWithKey go id
+  where
+    go k v acc = printModuleTab . printExport k v . acc
 
-i32_mul :: (Stack s) => TypedInstr (s :+ I32 :+ I32) (s :+ I32)
-i32_mul = i32_binary MUL
+printExport :: String -> ExportDecl -> ShowS
+printExport local (exptype, expname) =
+  ("(export \"" ++) . (expname ++) . ("\" (" ++) . prefix exptype . printName local . ("))\n" ++)
+  where
+    prefix ExpFunc = ("func " ++)
+    prefix ExpGlobal = ("global " ++)
 
-br :: (Stack s1, Stack s2) => TypedLabel s1 -> TypedInstr s1 s2
-br (TypedLabel l) = TypedInstr (Branch l)
+printDeclarations :: Map String Declaration -> ShowS
+printDeclarations = Map.foldr go id
+  where
+    go v acc = printDeclaration v . acc
 
-br_if :: (Stack s) => TypedLabel s -> TypedInstr (s :+ I32) s
-br_if (TypedLabel l) = TypedInstr (BranchIf l)
+printDeclaration :: Declaration -> ShowS
+printDeclaration (FuncDecl f) = printFunc f
+printDeclaration (GlobalVar) = id -- TODO:
 
--- block :: (Stack s1, Stack s2) => (TypedLabel s2 -> TypedInstr s1 s2) -> TypedInstr s1 s2
--- block body = TypedInstr $ Block False (untype . body . TypedLabel)
-
-block :: (VarTypes p, VarTypes r, Stack s) => p -> r -> (TypedLabel (StackType r s) -> FuncCallType s p r) -> FuncCallType s p r
-block p r body = TypedInstr $ Block False (typetags p) (typetags r) (untype . body . TypedLabel)
-
-loop :: (VarTypes p, VarTypes r, Stack s) => p -> r -> (TypedLabel (StackType p s) -> FuncCallType s p r) -> FuncCallType s p r
-loop p r body = TypedInstr $ Block True  (typetags p) (typetags r) (untype . body . TypedLabel)
-
-call :: (Stack s, VarTypes p, VarTypes v, VarTypes r) => WasmFunc p v r -> FuncCallType s p r
-call (WasmFunc _ func) = TypedInstr $ Call func
-
-local_get :: (Stack s) => Var t -> TypedInstr s (s :+ t)
-local_get (Var i) = TypedInstr $ LocalGet i
-
-local_set :: (Stack s) => Var t -> TypedInstr (s :+ t) s
-local_set (Var i) = TypedInstr $ LocalSet i
-
-{- Helper Instructions -}
-
-i32_binary :: (Stack s) => BinOp -> TypedInstr (s :+ I32 :+ I32) (s :+ I32)
-i32_binary op = TypedInstr (I32Binary op)
-
-i32_unary :: (Stack s) => UnOp -> TypedInstr (s :+ I32) (s :+ I32)
-i32_unary op = TypedInstr (I32Unary op)
-
-printFunc :: WasmFunc p v r -> ShowS
-printFunc (WasmFunc _ (WasmFuncT name params locals results body)) =
-  ("(func " ++) . printFuncName name . (" " ++) .
+printFunc :: WasmFuncT -> ShowS
+printFunc (WasmFuncT name params locals results body) =
+  printModuleTab . ("(func " ++) . printName name . (" " ++) .
   (printVars "param" params) .
   (printVars "result" results) .
   (printVars "local" locals) . ("\n" ++) .
-  evalState (printInstr body) newPrintState . (")" ++)
+  evalState (printInstr body) newPrintState .
+  printModuleTab . (")\n" ++)
 
-printFuncName :: String -> ShowS
-printFuncName name = ("$" ++) . (name ++)
+printName :: String -> ShowS
+printName name = ("$" ++) . (name ++)
 
 printVars :: String -> [TypeTag] -> ShowS
 printVars _ [] = id
@@ -157,12 +133,18 @@ printVars prefix tags = ("(" ++) . (prefix ++) . (foldr (.) id $ map showtag tag
 
 data PrintState = PrintState {labelid :: Int, tabs :: Int}
 
+moduleTab :: Int
+moduleTab = 1
+
 printTabs :: Int -> ShowS
 printTabs 0 = id
 printTabs n = ("  " ++) . printTabs (n-1)
 
+printModuleTab :: ShowS
+printModuleTab = printTabs moduleTab
+
 newPrintState :: PrintState
-newPrintState = PrintState {labelid = 0, tabs = 1}
+newPrintState = PrintState {labelid = 0, tabs = moduleTab + 1}
 
 printInstr :: Instr -> State PrintState ShowS
 printInstr (Sequence instrs) =
@@ -199,7 +181,7 @@ printInstr (Block isLoop params results f ) =
 
 printInstr (Branch l ) = return $ ("br " ++) . printLabel l
 printInstr (BranchIf l) = return $ ("br_if " ++) . printLabel l
-printInstr (Call (WasmFuncT name _ _ _ _) ) = return $ ("call " ++) . printFuncName name
+printInstr (Call (WasmFuncT name _ _ _ _) ) = return $ ("call " ++) . printName name
 printInstr (Return ) = return ("return" ++)
 printInstr (LocalGet i) = return $ ("local.get " ++) . shows i
 printInstr (LocalSet i) = return $ ("local.set " ++) . shows i

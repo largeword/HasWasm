@@ -1,20 +1,24 @@
+{-# LANGUAGE RankNTypes #-}
 module Main where
 
 import HasWasm
+import HasWasm.Instruction
 
 main :: IO ()
 main = do
-  putStrLn $ printFunc fact ""
-  putStrLn $ printFunc rgb ""
-  putStrLn $ printFunc test1 ""
+  case buildModule myModule of
+    Right result -> putStrLn $ result
+    Left err -> putStrLn $ "Error: " ++ err
 
+myModule :: WasmModule
 myModule = createModule $ do
-  addFunc rgb True
+  addFunc rgb False
   addFunc fact True
 
 rgb :: WasmFunc (I32, I32, I32) (I32) I32
 rgb = createFunction "rgb" func
   where
+  func :: (Stack s) => (Var I32, Var I32, Var I32) -> Var I32 -> ReturnInstr s I32 -> FuncBody s I32
   func (r, g, b) _ _ =
     local_get r #
     i32_const 256 #
