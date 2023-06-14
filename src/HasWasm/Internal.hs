@@ -12,8 +12,10 @@ module HasWasm.Internal  (
   Stack,
   (:+),
   Instr(..),
-  BinOp(..),
-  UnOp(..),
+  BinOpI(..),
+  UnOpI(..),
+  BinOpF(..),
+  UnOpF(..),
   LabelId,
   TypedInstr(..),
   TypedLabel(..),
@@ -60,17 +62,20 @@ type family Stack (s :: Type) :: Constraint where
 
 {- Types -}
 
-data BinOp = ADD | SUB | MUL | DIV
-data UnOp = NEG
+data BinOpI = ADDI | SUBI | MULI | DIVS
+data UnOpI = EQZ
+
+data BinOpF = ADDF | SUBF | MULF | DIV
+data UnOpF = NEG
 
 data Instr =
   Sequence (Seq Instr) |
   I32Const Int |
-  I32Binary BinOp |
-  I32Unary UnOp |
+  I32Binary BinOpI |
+  I32Unary UnOpI |
   F32Const Float |
-  F32Binary BinOp |
-  F32Unary UnOp |
+  F32Binary BinOpF |
+  F32Unary UnOpF |
   Block Bool [TypeTag] [TypeTag] (LabelId -> Instr) |
   Branch LabelId |
   BranchIf LabelId |
@@ -186,18 +191,29 @@ type family StackType t s where
 {- Show & Eq Instances -}
 
 deriving instance Eq TypeTag
-deriving instance Eq BinOp
-deriving instance Eq UnOp
+deriving instance Eq BinOpI
+deriving instance Eq UnOpI
+deriving instance Eq BinOpF
+deriving instance Eq UnOpF
 
 instance Show TypeTag where
   show I32T = "i32"
   show F32T = "f32"
 
-instance Show BinOp where
-  show ADD = "add"
-  show SUB = "sub"
-  show MUL = "mul"
-  show DIV = "div"
+instance Show BinOpI where
+  show ADDI = "add"
+  show SUBI = "sub"
+  show MULI = "mul"
+  show DIVS = "div_s"
 
-instance Show UnOp where
+instance Show UnOpI where
+  show EQZ = "eqz"
+
+instance Show BinOpF where
+  show ADDF = "add"
+  show SUBF = "sub"
+  show MULF = "mul"
+  show DIV  = "div"
+
+instance Show UnOpF where
   show NEG = "neg"

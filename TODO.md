@@ -1,4 +1,11 @@
-to be implemented:
+TODO
+----
+1. declare global & local var, set & get
+2. traverse & build implicitly called functions / global var
+3. add more i32 / f32 instructions
+4. generate wasm binary?
+
+instrs:
 t.const
 t.unop
 t.binop
