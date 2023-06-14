@@ -12,6 +12,8 @@ module HasWasm (
   addFunc,
   buildModule,
   createFunction,
+  createExpFunction,
+  createLocalFunction,
 ) where
 
 import HasWasm.Internal
@@ -61,22 +63,19 @@ updateMod mod = do
   ctx <- get
   put ctx {wasmmod = mod}
 
-addFunc :: WasmFunc p v r -> Bool -> ModuleBuilder ()
-addFunc (WasmFunc _ func) exported = do
+addFunc :: WasmFunc p v r -> ModuleBuilder ()
+addFunc (WasmFunc _ func@(WasmFuncT name expname _ _ _ _)) = do
   let decl = FuncDecl func
-  let name = funcName func
   mod <- gets wasmmod
   case findIn declarations name mod of
     Just _ -> throwE $ "Name is already declared: " ++ name
     Nothing -> updateMod (addDeclaration name decl mod) -- TODO: recurse to find implicitly called functions?
 
-  if exported then do
-    mod <- gets wasmmod
-    updateMod (addExport name (ExpFunc, name) mod)
-  else return ()
-
-funcName :: WasmFuncT -> String
-funcName (WasmFuncT name _ _ _ _) = name
+  case expname of
+    Nothing -> return ()
+    Just ename -> do
+      mod <- gets wasmmod
+      updateMod (addExport name (ExpFunc, ename) mod)
 
 {- Print to WAT Functions -}
 
@@ -114,7 +113,7 @@ printDeclaration (FuncDecl f) = printFunc f
 printDeclaration (GlobalVar) = id -- TODO:
 
 printFunc :: WasmFuncT -> ShowS
-printFunc (WasmFuncT name params locals results body) =
+printFunc (WasmFuncT name _ params locals results body) =
   printModuleTab . ("(func " ++) . printName name . (" " ++) .
   (printVars "param" params) .
   (printVars "result" results) .
@@ -181,7 +180,7 @@ printInstr (Block isLoop params results f ) =
 
 printInstr (Branch l ) = return $ ("br " ++) . printLabel l
 printInstr (BranchIf l) = return $ ("br_if " ++) . printLabel l
-printInstr (Call (WasmFuncT name _ _ _ _) ) = return $ ("call " ++) . printName name
+printInstr (Call (WasmFuncT name _ _ _ _ _) ) = return $ ("call " ++) . printName name
 printInstr (Return ) = return ("return" ++)
 printInstr (LocalGet i) = return $ ("local.get " ++) . shows i
 printInstr (LocalSet i) = return $ ("local.set " ++) . shows i

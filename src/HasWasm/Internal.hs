@@ -26,6 +26,8 @@ module HasWasm.Internal  (
   WasmFunc(..),
   WasmFuncT(..),
   createFunction,
+  createExpFunction,
+  createLocalFunction,
   ReturnInstr,
   FuncBody,
   FuncCallType,
@@ -110,23 +112,31 @@ newtype (BaseType t) => Var t = Var Int
 data WasmFunc p v r where
   WasmFunc :: (VarTypes p, VarTypes v, VarTypes r) => (p, v, r) -> WasmFuncT -> WasmFunc p v r
 
-data WasmFuncT = WasmFuncT String [TypeTag] [TypeTag] [TypeTag] (Instr)
+data WasmFuncT = WasmFuncT String (Maybe String) [TypeTag] [TypeTag] [TypeTag] (Instr)
 
 type FuncBody s r = TypedInstr s (StackType r s)
 type ReturnInstr s r = forall s2. TypedInstr (StackType r s) s2
 type FuncCallType s p r = TypedInstr (StackType p s) (StackType r s)
 
 createFunction :: (VarTypes p, VarTypes v, VarTypes r) =>
-  String -> (VarSet p -> VarSet v -> ReturnInstr (StackT s t) r -> FuncBody (StackT s t) r) -> WasmFunc p v r
+  String -> (Maybe String) -> (VarSet p -> VarSet v -> ReturnInstr (StackT s t) r -> FuncBody (StackT s t) r) -> WasmFunc p v r
 
-createFunction name body =
-  WasmFunc proxy $ WasmFuncT name (typetags p) (typetags v) (typetags r) (untype funcbody)
+createFunction name expname body =
+  WasmFunc proxy $ WasmFuncT name expname (typetags p) (typetags v) (typetags r) (untype funcbody)
   where
     proxy@(p, v, r) = (value, value, value)
     (params, n1) = (genvar p 0)
     (vars, _) = (genvar v n1)
     returnInstr = TypedInstr Return
     funcbody = body params vars returnInstr
+
+createExpFunction :: (VarTypes p, VarTypes v, VarTypes r) =>
+  String -> (VarSet p -> VarSet v -> ReturnInstr (StackT s t) r -> FuncBody (StackT s t) r) -> WasmFunc p v r
+createExpFunction name body = createFunction name (Just name) body
+
+createLocalFunction :: (VarTypes p, VarTypes v, VarTypes r) =>
+  String -> (VarSet p -> VarSet v -> ReturnInstr (StackT s t) r -> FuncBody (StackT s t) r) -> WasmFunc p v r
+createLocalFunction name body = createFunction name Nothing body
 
 {- Param & Var Types -}
 
