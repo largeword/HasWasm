@@ -15,8 +15,10 @@ module HasWasm.Internal  (
   Instr(..),
   BinOpI(..),
   UnOpI(..),
+  RelOpI(..),
   BinOpF(..),
   UnOpF(..),
+  RelOpF(..),
   LabelId,
   TypedInstr(..),
   TypedLabel(..),
@@ -72,20 +74,24 @@ type family Stack (s :: Type) :: Constraint where
 
 {- Types -}
 
-data BinOpI = ADDI | SUBI | MULI | DIVS
+data BinOpI = ADDI | SUBI | MULI | DIVS | DIVU | REMS | REMU | ANDI | ORI | XORI | SHLI | SHR_S | SHR_U | ROTLI | ROTRI
 data UnOpI = EQZ
+data RelOpI = EQI | NEI | LTI_S | LTI_U | GTI_S | GTI_U | LEI_S | LEI_U | GEI_S | GEI_U
 
-data BinOpF = ADDF | SUBF | MULF | DIV
-data UnOpF = NEG
+data BinOpF = ADDF | SUBF | MULF | DIVF | MINF | MAXF | COPYSIGNF
+data UnOpF = NEGF | ABSF | CEILF | FLOORF | TRUNCF | NEARESTF | SQRTF
+data RelOpF = EQF | NEF | LTF | GTF | LEF | GEF
 
 data Instr =
   Sequence (Seq Instr) |
   I32Const Int |
   I32Binary BinOpI |
   I32Unary UnOpI |
+  I32Compare RelOpI |
   F32Const Float |
   F32Binary BinOpF |
   F32Unary UnOpF |
+  F32Compare RelOpF |
   Block Bool [TypeTag] [TypeTag] (LabelId -> Instr) |
   Branch LabelId |
   BranchIf LabelId |
@@ -238,8 +244,10 @@ type family StackType t s where
 deriving instance Eq TypeTag
 deriving instance Eq BinOpI
 deriving instance Eq UnOpI
+deriving instance Eq RelOpI
 deriving instance Eq BinOpF
 deriving instance Eq UnOpF
+deriving instance Eq RelOpF
 
 instance Show TypeTag where
   show I32T = "i32"
@@ -250,15 +258,55 @@ instance Show BinOpI where
   show SUBI = "sub"
   show MULI = "mul"
   show DIVS = "div_s"
+  show DIVU = "div_u"
+  show REMS = "rem_s"
+  show REMU = "rem_u"
+  show ANDI = "and"
+  show ORI = "or"
+  show XORI = "xor"
+  show SHLI = "shl"
+  show SHR_S = "shr_s"
+  show SHR_U = "shr_u"
+  show ROTLI = "rotl"
+  show ROTRI = "rotr"
 
 instance Show UnOpI where
   show EQZ = "eqz"
+
+instance Show RelOpI where
+  show EQI = "eq"
+  show NEI = "ne"
+  show LTI_S = "lt_s"
+  show LTI_U = "lt_u"
+  show GTI_S = "gt_s"
+  show GTI_U = "gt_u"
+  show LEI_S = "le_s"
+  show LEI_U = "le_u"
+  show GEI_S = "ge_s"
+  show GEI_U = "ge_u"
 
 instance Show BinOpF where
   show ADDF = "add"
   show SUBF = "sub"
   show MULF = "mul"
-  show DIV  = "div"
+  show DIVF  = "div"
+  show MINF = "min"
+  show MAXF = "max"
+  show COPYSIGNF = "copysign"
 
 instance Show UnOpF where
-  show NEG = "neg"
+  show NEGF = "neg"
+  show ABSF = "abs"
+  show CEILF = "ceil"
+  show FLOORF = "floor"
+  show TRUNCF = "trunc"
+  show NEARESTF = "nearest"
+  show SQRTF = "sqrt"
+
+instance Show RelOpF where
+  show EQF = "eq"
+  show NEF = "ne"
+  show LTF = "lt"
+  show GTF = "gt"
+  show LEF = "le"
+  show GEF = "ge"
