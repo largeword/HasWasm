@@ -15,6 +15,7 @@ myModule = createModule $ do
   addFunc addCounter
   addGlobal counter
   addGlobal immvar
+  addFunc mathsqrt
 
 myModule1 :: WasmModule
 myModule1 = createModule $ do
@@ -31,6 +32,9 @@ myModule3 = createModule $ do
   addFunc rgb
 
 -- it should be that myModule1 ~~ myModule2 ~~ myModule3
+
+mathsqrt :: WasmFunc F32 () F32
+mathsqrt = createImportFunction "Math" "sqrt" "sqrt"
 
 counter :: GlobalVar Mut I32
 counter = createGlobalI32 "counter" (Just "counter") 0
