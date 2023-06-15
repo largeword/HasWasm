@@ -33,9 +33,11 @@ module HasWasm.Internal  (
   GlobalVar(..),
   WasmFunc(..),
   WasmFuncT(..),
+  ImportFuncT(..),
   createFunction,
   createExpFunction,
   createLocalFunction,
+  createImportFunction,
   createGlobalI32,
   createGlobalF32,
   ReturnInstr,
@@ -152,8 +154,11 @@ instance Mutability Imm where
 
 data WasmFunc p v r where
   WasmFunc :: (VarTypes p, VarTypes v, VarTypes r) => (p, v, r) -> WasmFuncT -> WasmFunc p v r
+  ImportFunc :: (VarTypes p, VarTypes r) => (p, r) -> ImportFuncT -> WasmFunc p () r
 
 data WasmFuncT = WasmFuncT String (Maybe String) [TypeTag] [TypeTag] [TypeTag] (Instr)
+
+data ImportFuncT = ImportFuncT String String String [TypeTag] [TypeTag]
 
 type FuncBody s r = TypedInstr s (StackType r s)
 type ReturnInstr s r = forall s2. TypedInstr (StackType r s) s2
@@ -178,6 +183,12 @@ createExpFunction name body = createFunction name (Just name) body
 createLocalFunction :: (VarTypes p, VarTypes v, VarTypes r) =>
   String -> (VarSet p -> VarSet v -> ReturnInstr (StackT s t) r -> FuncBody (StackT s t) r) -> WasmFunc p v r
 createLocalFunction name body = createFunction name Nothing body
+
+createImportFunction :: (VarTypes p, VarTypes r) => String -> String -> String -> WasmFunc p () r
+createImportFunction mod imname locname =
+  ImportFunc proxy $ ImportFuncT mod imname locname (typetags p) (typetags r)
+  where
+    proxy@(p, r) = (value, value)
 
 {- Param & Var Types -}
 

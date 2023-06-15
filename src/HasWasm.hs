@@ -17,6 +17,7 @@ module HasWasm (
   createFunction,
   createExpFunction,
   createLocalFunction,
+  createImportFunction
 ) where
 
 import HasWasm.Internal
@@ -29,9 +30,13 @@ import qualified Data.Map as Map
 {- WASM Module -}
 
 type WasmModule = Either String WasmModuleT
-data WasmModuleT = WasmModuleT {declarations :: Map String Declaration, exports :: Map String ExportDecl}
+data WasmModuleT = WasmModuleT {
+  declarations :: Map String Declaration,
+  exports :: Map String ExportDecl,
+  imports :: Map String ImportFuncT
+  }
 
-data Declaration = FuncDecl WasmFuncT | GlobalDecl String (Maybe String) Bool InitValue
+data Declaration = FuncDecl WasmFuncT | GlobalDecl String (Maybe String) Bool InitValue | ImportFuncDecl
 type ExportDecl = (ExportType, String)
 data ExportType = ExpFunc | ExpGlobal
 
@@ -44,10 +49,13 @@ addDeclaration key val mod = mod {declarations = Map.insert key val (declaration
 addExport :: String -> ExportDecl -> WasmModuleT -> WasmModuleT
 addExport key val mod = mod {exports = Map.insert key val (exports mod)}
 
+addImport :: String -> ImportFuncT -> WasmModuleT -> WasmModuleT
+addImport key val mod = mod {imports = Map.insert key val (imports mod)}
+
 data BuilderContext = BuilderContext {wasmmod :: WasmModuleT}
 
 newWasmModule :: WasmModuleT
-newWasmModule = WasmModuleT {declarations = Map.empty, exports = Map.empty}
+newWasmModule = WasmModuleT {declarations = Map.empty, exports = Map.empty, imports = Map.empty}
 
 newCtx :: BuilderContext
 newCtx = BuilderContext { wasmmod = newWasmModule}
@@ -80,6 +88,16 @@ addFunc (WasmFunc _ func@(WasmFuncT name expname _ _ _ _)) = do
       mod <- gets wasmmod
       updateMod (addExport name (ExpFunc, ename) mod)
 
+addFunc (ImportFunc _ func@(ImportFuncT _ _ name _ _)) = do
+  mod <- gets wasmmod
+  case findIn declarations name mod of
+    Just _ -> throwE $ "Name is already declared: " ++ name
+    Nothing -> updateMod (addDeclaration name ImportFuncDecl mod) -- only for marking the name usage
+
+  -- the actual definition is stored in imports
+  mod <- gets wasmmod
+  updateMod (addImport name func mod)
+
 addGlobal :: (Mutability m) => GlobalVar m t -> ModuleBuilder ()
 addGlobal (GlobalVar mut name expname init) = do
   let decl = GlobalDecl name expname (isMutable mut) init
@@ -101,6 +119,7 @@ buildModule mod = fmap (runShows . go) mod
   where
     go mod =
       ("(module \n" ++) .
+      printImports (imports mod) .
       printExports (exports mod) .
       printDeclarations (declarations mod) .
       (")\n" ++)
@@ -120,6 +139,18 @@ printExport local (exptype, expname) =
     prefix ExpFunc = ("func " ++)
     prefix ExpGlobal = ("global " ++)
 
+printImports :: Map String ImportFuncT -> ShowS
+printImports = Map.foldr go id
+  where
+    go v acc = printModuleTab . printImportFunc v . acc
+
+printImportFunc :: ImportFuncT -> ShowS
+printImportFunc (ImportFuncT immod imname locname params results) =
+  ("(import " ++) . printQuot immod . (" " ++) .
+  printQuot imname . (" (func " ++) . printName locname . (" " ++) .
+  (printVars "param" params) .
+  (printVars "result" results) . ("))\n" ++)
+
 printDeclarations :: Map String Declaration -> ShowS
 printDeclarations = Map.foldr go id
   where
@@ -134,6 +165,7 @@ printDeclaration (GlobalDecl name _  mut init) =
     showinit (InitF f) = ismut mut "f32" . (" (f32.const " ++) . shows f
     ismut True t = (" (mut " ++) . (t ++) . (")" ++)
     ismut False t = (" " ++) . (t ++)
+printDeclaration (ImportFuncDecl) = id
 
 printFunc :: WasmFuncT -> ShowS
 printFunc (WasmFuncT name _ params locals results body) =
@@ -146,6 +178,9 @@ printFunc (WasmFuncT name _ params locals results body) =
 
 printName :: String -> ShowS
 printName name = ("$" ++) . (name ++)
+
+printQuot :: String -> ShowS
+printQuot name = ("\"" ++) . (name ++) . ("\"" ++)
 
 printVars :: String -> [TypeTag] -> ShowS
 printVars _ [] = id
