@@ -24,12 +24,14 @@ import Control.Monad.State
 import Control.Monad.Except
 import Control.Monad.Trans.Except
 import Data.Map ( Map )
+import Data.Sequence (Seq (Empty, (:<|), (:|>)))
 import qualified Data.Map as Map
+import HasWasm.Instruction (call)
 
 {- WASM Module -}
 
 type WasmModule = Either String WasmModuleT
-data WasmModuleT = WasmModuleT {declarations :: Map String Declaration, exports :: Map String ExportDecl}
+data WasmModuleT = WasmModuleT {declarations :: Map String Declaration, exports :: Map String ExportDecl, isAddedExplicitly :: Map String Bool}
 
 data Declaration = FuncDecl WasmFuncT | GlobalDecl String (Maybe String) Bool InitValue
 type ExportDecl = (ExportType, String)
@@ -44,10 +46,14 @@ addDeclaration key val mod = mod {declarations = Map.insert key val (declaration
 addExport :: String -> ExportDecl -> WasmModuleT -> WasmModuleT
 addExport key val mod = mod {exports = Map.insert key val (exports mod)}
 
+-- To store whether a function is added explicitly (by user) or implicitly (by calling)
+addExplicitly :: String -> Bool -> WasmModuleT -> WasmModuleT
+addExplicitly key val mod = mod {isAddedExplicitly = Map.insert key val (isAddedExplicitly mod)}
+
 data BuilderContext = BuilderContext {wasmmod :: WasmModuleT}
 
 newWasmModule :: WasmModuleT
-newWasmModule = WasmModuleT {declarations = Map.empty, exports = Map.empty}
+newWasmModule = WasmModuleT {declarations = Map.empty, exports = Map.empty, isAddedExplicitly = Map.empty}
 
 newCtx :: BuilderContext
 newCtx = BuilderContext { wasmmod = newWasmModule}
@@ -67,18 +73,86 @@ updateMod mod = do
   put ctx {wasmmod = mod}
 
 addFunc :: WasmFunc p v r -> ModuleBuilder ()
-addFunc (WasmFunc _ func@(WasmFuncT name expname _ _ _ _)) = do
+addFunc (WasmFunc _ func@(WasmFuncT name expname p v r funcBody)) = do
   let decl = FuncDecl func
   mod <- gets wasmmod
   case findIn declarations name mod of
-    Just _ -> throwE $ "Name is already declared: " ++ name
-    Nothing -> updateMod (addDeclaration name decl mod) -- TODO: recurse to find implicitly called functions?
+    -- If find a declaration, check if it is added explicitly
+    Just (FuncDecl (WasmFuncT _ _ p' v' r' _)) -> case findIn isAddedExplicitly name mod of
+      -- If added not explicitly, check if the signature is the same
+      Just False -> do
+        if (p' == p) && (v' == v) && (r' == r) then do
+          -- If the signature is the same, update the declaration into explicitly added one
+          updateMod (addExplicitly name True mod)
+        else throwE $ "Function " ++ name ++ " is already declared and has different signature"
+      -- If added explicitly, throw error, since it is already defined
+      Just True -> throwE $ "Function " ++ name ++ " is already defined"
+      -- If not known how it was added, but it is already there, throw error, something goes wrong!
+      Nothing -> throwE $ "addFunc PANIC! Name is already declared but not known how it was added: " ++ name
+    
+    Nothing -> do
+      updateMod (addDeclaration name decl mod) -- TODO: recurse to find implicitly called functions?
+      updateMod (addExplicitly name True mod)
+      implicitlyCalledFuncAdd funcBody
+    _ -> throwE $ "Name is already declared but not a function: " ++ name
 
   case expname of
     Nothing -> return ()
     Just ename -> do
       mod <- gets wasmmod
       updateMod (addExport name (ExpFunc, ename) mod)
+
+{- Handle implicitly called function -}
+
+-- Extract all the functions called in the body of a declaring function
+lookupCalledFunc :: Instr -> [WasmFuncT] -> [WasmFuncT]
+lookupCalledFunc funcBody funcList = 
+  case funcBody of
+    Call wasmFuncT -> funcList ++ [wasmFuncT]
+    Sequence instrSeq -> do
+      lookupInstrSeq instrSeq funcList
+    _ -> funcList
+
+-- Extract all the functions called in a sequence of instructions
+lookupInstrSeq :: Seq Instr -> [WasmFuncT] -> [WasmFuncT]
+lookupInstrSeq funcBody funcList = 
+  case funcBody of
+    Empty -> funcList
+    x :<| xs -> case x of
+      Call wasmFuncT -> lookupInstrSeq xs (funcList ++ [wasmFuncT])
+      _ -> lookupInstrSeq xs funcList
+
+-- Implicitly add called functions 
+implicitlyCalledFuncAdd :: Instr -> ModuleBuilder ()
+implicitlyCalledFuncAdd funcBody = do
+  let funcList = lookupCalledFunc funcBody []
+  implicitlyCalledFuncAddHelper funcList
+
+implicitlyCalledFuncAddHelper :: [WasmFuncT] -> ModuleBuilder ()
+implicitlyCalledFuncAddHelper funcs = do
+  case funcs of
+    f : fs -> do
+      let (WasmFuncT name' expname' p' v' r' _) = f
+      let decl' = FuncDecl f
+      mod <- gets wasmmod
+      case findIn declarations name' mod of
+        Nothing -> do
+          updateMod (addDeclaration name' decl' mod)
+          updateMod (addExplicitly name' False mod)
+          implicitlyCalledFuncAddHelper fs
+        Just (FuncDecl (WasmFuncT _ _ p v r _)) -> do
+          -- No need to change the isAddedExplicitly flag
+          if (p' == p) && (v' == v) && (r' == r) then implicitlyCalledFuncAddHelper fs
+          else throwE $ "Called function " ++ name' ++ " is already declared but has different signature"
+        _ -> throwE $ "implicitlyCalledFuncAddHelper PANIC! Name is already declared but the called function is not a function: " ++ name'
+
+      case expname' of
+        Nothing -> return ()
+        Just ename' -> do
+          mod <- gets wasmmod
+          updateMod (addExport name' (ExpFunc, ename') mod)
+    [] -> return ()
+
 
 addGlobal :: (Mutability m) => GlobalVar m t -> ModuleBuilder ()
 addGlobal (GlobalVar mut name expname init) = do

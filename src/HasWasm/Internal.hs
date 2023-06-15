@@ -5,6 +5,8 @@
 {-# LANGUAGE StandaloneDeriving #-}
 {-# LANGUAGE AllowAmbiguousTypes #-}
 {-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE InstanceSigs #-}
+{-# LANGUAGE ViewPatterns #-}
 
 module HasWasm.Internal  (
   I32(..), F32(..), TypeTag(..),
@@ -102,6 +104,26 @@ data Instr =
   GlobalGet String |
   GlobalSet String
 
+instance Show Instr where
+  show (Sequence s) = show s
+  show (I32Const i) = "i32.const " ++ show i
+  show (I32Binary op) = "i32." ++ show op
+  show (I32Unary op) = "i32." ++ show op
+  show (I32Compare op) = "i32." ++ show op
+  show (F32Const f) = "f32.const " ++ show f
+  show (F32Binary op) = "f32." ++ show op
+  show (F32Unary op) = "f32." ++ show op
+  show (F32Compare op) = "f32." ++ show op
+  show (Block b typeP typeV typeR) = "block " ++ show b ++ " (" ++ show typeP ++ ") (" ++ show typeV ++ ")"
+  show (Branch i) = "br " ++ show i
+  show (BranchIf i) = "br_if " ++ show i
+  show (Call wasmFuncT) = "call " ++ show wasmFuncT
+  show Return = "return"
+  show (LocalGet i) = "local.get " ++ show i
+  show (LocalSet i) = "local.set " ++ show i
+  show (GlobalGet name) = "global.get " ++ name
+  show (GlobalSet name) = "global.set " ++ name
+
 newtype (Stack a, Stack b) => TypedInstr a b = TypedInstr Instr
 
 type LabelId = Int
@@ -153,7 +175,13 @@ instance Mutability Imm where
 data WasmFunc p v r where
   WasmFunc :: (VarTypes p, VarTypes v, VarTypes r) => (p, v, r) -> WasmFuncT -> WasmFunc p v r
 
+instance Show (WasmFunc p v r) where
+  show (WasmFunc (p, v, r) wasmFuncT) = show wasmFuncT
+
 data WasmFuncT = WasmFuncT String (Maybe String) [TypeTag] [TypeTag] [TypeTag] (Instr)
+
+instance Show WasmFuncT where
+  show (WasmFuncT name expname p v r instr) = "(WasmFuncT " ++ name ++ " " ++ show expname ++ " (param " ++ show p ++ ") (var " ++ show v ++") (result " ++ show r ++ ") " ++ show instr ++ ")"
 
 type FuncBody s r = TypedInstr s (StackType r s)
 type ReturnInstr s r = forall s2. TypedInstr (StackType r s) s2
@@ -198,12 +226,14 @@ instance VarTypes I32 where
 
 instance VarTypes F32 where
   value = F32
+  genvar :: F32 -> Int -> (VarSet F32, Int)
   genvar _ i = (Var i, i+1)
   typetags t = [tag t]
 
 instance (BaseType t1, BaseType t2) => VarTypes (t1, t2) where
   value = (val, val)
   genvar _ i = ((Var i, Var $ i + 1), i + 2)
+  typetags :: (BaseType t1, BaseType t2) => (t1, t2) -> [TypeTag]
   typetags (t1, t2) = [tag t1, tag t2]
 
 instance (BaseType t1, BaseType t2, BaseType t3) => VarTypes (t1, t2, t3) where

@@ -6,7 +6,7 @@ import HasWasm.Instruction
 
 main :: IO ()
 main = do
-  case buildModule myModule of
+  case buildModule myModule1 of
     Right result -> putStrLn $ result
     Left err -> putStrLn $ "Error: " ++ err
 
@@ -59,7 +59,7 @@ add3 = createExpFunction "add3" funcbody
     call rgb
 
 rgb :: WasmFunc (I32, I32, I32) (I32) I32
-rgb = createLocalFunction "rgb" func
+rgb = createExpFunction "rgb" func
   where
   func :: (Stack s) => (Var I32, Var I32, Var I32) -> Var I32 -> ReturnInstr s I32 -> FuncBody s I32
   func (r, g, b) l ret =
