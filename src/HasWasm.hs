@@ -1,4 +1,6 @@
+{-# LANGUAGE GADTs #-}
 -- most of the constructors from internal should NOT be exported!
+
 module HasWasm (
   -- exposed types and helper functions
   I32(..), F32(..),
