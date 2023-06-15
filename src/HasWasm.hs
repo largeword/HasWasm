@@ -182,8 +182,10 @@ printInstr (Sequence instrs) =
 printInstr (I32Const i) = return $ ("i32.const " ++) . shows i
 printInstr (I32Binary b) = return $ ("i32." ++) . shows b
 printInstr (I32Unary u) = return $ ("i32." ++) . shows u
-printInstr (F32Const f ) = return $ ("f32.const " ++) . shows f
-printInstr (F32Binary b ) = return $ ("f32." ++) . shows b
+printInstr (I32Compare r) = return $ ("i32." ++) . shows r
+printInstr (F32Const f) = return $ ("f32.const " ++) . shows f
+printInstr (F32Binary b) = return $ ("f32." ++) . shows b
+printInstr (F32Compare r) = return $ ("f32." ++) . shows r
 printInstr (F32Unary u ) = return $ ("f32." ++) . shows u
 printInstr (Block isLoop params results f ) =
   do

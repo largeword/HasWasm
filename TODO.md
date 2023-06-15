@@ -1,10 +1,10 @@
 TODO
 ----
-1. traverse & build implicitly called functions / global var
-2. add more i32 / f32 instructions
-3. declare global var, set & get
-4. imports
-5. change the evaluation #2 to "is the syntax similar enough to wasm text syntax?"
+- [ ] traverse & build implicitly called functions / global var
+- [ ] imports
+- [ ] change the evaluation #2 to "is the syntax similar enough to wasm text syntax?"
+- [x] add more i32 / f32 instructions
+- [x] declare global var, set & get
 
 instrs:
 t.const
