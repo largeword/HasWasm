@@ -131,4 +131,6 @@ test-suite haswasm-test
     -- Test dependencies.
     build-depends:
         base,
-        haswasm
+        haswasm,
+        tasty,
+        tasty-hunit
