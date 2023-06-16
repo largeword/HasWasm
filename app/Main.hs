@@ -41,7 +41,7 @@ myModule3 = createModule $ do
 
 -- it should be that myModule1 ~~ myModule2 ~~ myModule3
 
-mathsqrt :: WasmFunc F32 () F32
+mathsqrt :: WasmFunc I32 () I32
 mathsqrt = createImportFunction "Math" "sqrt" "sqrt"
 
 counter :: GlobalVar Mut I32
@@ -68,7 +68,8 @@ add3 = createExpFunction "add3" funcbody
     local_get a #
     local_get b #
     local_get c #
-    call rgb
+    call rgb #
+    call mathsqrt 
 
 rgb :: WasmFunc (I32, I32, I32) (I32) I32
 rgb = createExpFunction "rgb" func

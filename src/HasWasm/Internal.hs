@@ -159,10 +159,10 @@ newtype (BaseType t) => Var t = Var Int
 data (Mutability m, BaseType t) => GlobalVar m t = GlobalVar m String (Maybe String) InitValue
 
 createGlobalI32 :: (Mutability m) => String -> Maybe String -> Int -> GlobalVar m I32
-createGlobalI32 name expname val = GlobalVar mval name expname (InitI val)
+createGlobalI32 name expname val' = GlobalVar mval name expname (InitI val')
 
 createGlobalF32 :: (Mutability m) => String -> Maybe String -> Float -> GlobalVar m F32
-createGlobalF32 name expname val = GlobalVar mval name expname (InitF val)
+createGlobalF32 name expname val' = GlobalVar mval name expname (InitF val')
 
 data InitValue = InitI Int | InitF Float 
   deriving Eq
@@ -188,6 +188,7 @@ data WasmFunc p v r where
 
 instance Show (WasmFunc p v r) where
   show (WasmFunc (p, v, r) wasmFuncT) = show wasmFuncT
+  show (ImportFunc (p, r) importFuncT) = show importFuncT
 
 data WasmFuncT = WasmFuncT String (Maybe String) [TypeTag] [TypeTag] [TypeTag] (Instr)
 
@@ -195,6 +196,9 @@ instance Show WasmFuncT where
   show (WasmFuncT name expname p v r instr) = "(WasmFuncT " ++ name ++ " " ++ show expname ++ " (param " ++ show p ++ ") (var " ++ show v ++") (result " ++ show r ++ ") " ++ show instr ++ ")"
 
 data ImportFuncT = ImportFuncT String String String [TypeTag] [TypeTag]
+
+instance Show ImportFuncT where
+  show (ImportFuncT name modulename expname p r) = "(ImportFuncT " ++ name ++ " " ++ modulename ++ " " ++ expname ++ " (param " ++ show p ++ ") (result " ++ show r ++ "))"
 
 type FuncBody s r = TypedInstr s (StackType r s)
 type ReturnInstr s r = forall s2. TypedInstr (StackType r s) s2

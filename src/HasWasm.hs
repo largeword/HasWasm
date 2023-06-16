@@ -105,7 +105,7 @@ addFunc (WasmFunc _ func@(WasmFuncT name expname p v r funcBody)) = do
 addFunc (ImportFunc _ func@(ImportFuncT _ _ name _ _)) = do
   mod <- gets wasmmod
   case findIn declarations name mod of
-    Just _ -> throwE $ "Name is already declared: " ++ name
+    Just _ -> throwE $ "Imported name is already declared: " ++ name
     Nothing -> updateMod (addDeclaration name ImportFuncDecl mod) -- only for marking the name usage
 
   -- the actual definition is stored in imports
@@ -113,7 +113,7 @@ addFunc (ImportFunc _ func@(ImportFuncT _ _ name _ _)) = do
   updateMod (addImport name func mod)
 
 
-{- Handle implicitly called function -}
+{- Handle implicitly called function & global var -}
 
 -- Extract all the functions called in the body of a declaring function
 lookupCalledFunc :: Instr -> [WasmFuncT] -> [WasmFuncT]
