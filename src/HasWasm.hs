@@ -76,6 +76,8 @@ updateMod mod = do
   ctx <- get
   put ctx {wasmmod = mod}
 
+{- Expicitly add functions -}
+
 addFunc :: WasmFunc p v r -> ModuleBuilder ()
 addFunc (WasmFunc _ func@(WasmFuncT name expname p v r funcBody)) = do
   let decl = FuncDecl func True
@@ -114,7 +116,6 @@ addFunc (ImportFunc _ func@(ImportFuncT _ _ name _ _)) = do
   mod <- gets wasmmod
   updateMod (addImport name func mod)
 
-
 {- Handle implicitly called function & global var -}
 
 -- Extract all the functions called in the body of a declaring function
@@ -136,19 +137,22 @@ lookupSeqCalledFunc funcBody funcList =
       Block _ _ _ lb2instr -> lookupSeqCalledFunc xs (funcList ++ lookupCalledFunc (lb2instr 0) funcList)
       _ -> lookupSeqCalledFunc xs funcList
 
+-- Add all the recursively called functions into the module, tier by tier
 lookupNestedCallFunc :: [WasmFuncT] -> [WasmFuncT] -> [WasmFuncT]
 lookupNestedCallFunc lookupFs storedFs = do
   let lookupFs' = Prelude.filter (`notElem` storedFs) lookupFs
   let nestedFuncs = lookupNestedCallFunc' lookupFs'
   let flat = concat nestedFuncs
   case nestedFuncs of
-    [] -> lookupFs' ++ storedFs
-    _ -> lookupNestedCallFunc flat (lookupFs' ++ storedFs)
+    [] ->  storedFs ++ lookupFs'
+    _ -> lookupNestedCallFunc flat (storedFs ++ lookupFs')
 
+-- Helper function for lookupNestedCallFunc
 lookupNestedCallFunc' :: [WasmFuncT] -> [[WasmFuncT]]
 lookupNestedCallFunc' [] = []
-lookupNestedCallFunc' ((WasmFuncT _ _ _ _ _ funcBody): fs) = lookupCalledFunc funcBody [] : lookupNestedCallFunc' fs
+lookupNestedCallFunc' ((WasmFuncT _ _ _ _ _ funcBody): fs) = lookupNestedCallFunc' fs ++ [lookupCalledFunc funcBody []]
 
+-- Add all the recursivly called imported functions into the module
 lookupNestedCalledImport :: [WasmFuncT] -> [ImportFuncT] -> [ImportFuncT]
 lookupNestedCalledImport [] storedImps = storedImps
 lookupNestedCalledImport ((WasmFuncT _ _ _ _ _ funcBody):fs) storedImps =
@@ -160,6 +164,7 @@ lookupNestedCalledImport ((WasmFuncT _ _ _ _ _ funcBody):fs) storedImps =
     Sequence instrSeq -> lookupNestedCalledImport fs (storedImps ++ lookupSeqCalledImport instrSeq [])
     _ -> lookupNestedCalledImport fs storedImps
 
+-- Extract all the imported functions called in a sequence of instructions
 lookupSeqCalledImport :: Seq Instr -> [ImportFuncT] -> [ImportFuncT]
 lookupSeqCalledImport funcBody funcList =
   case funcBody of
@@ -168,6 +173,7 @@ lookupSeqCalledImport funcBody funcList =
       CallImport importFuncT -> lookupSeqCalledImport xs (funcList ++ [importFuncT])
       _ -> lookupSeqCalledImport xs funcList
 
+-- Add all the recursivly called global variables into the module
 lookupNestedCalledGVar :: [WasmFuncT] -> [GlobalVarData] -> [GlobalVarData]
 lookupNestedCalledGVar [] storedGVars = storedGVars
 lookupNestedCalledGVar ((WasmFuncT _ _ _ _ _ funcBody):fs) storedGVars = lookupNestedCalledGVar fs (storedGVars ++ lookupCalledGVar funcBody [])
@@ -192,7 +198,7 @@ lookupSeqCalledGVar funcBody gVarList =
       GlobalSet globalVar -> lookupSeqCalledGVar xs (gVarList ++ [globalVar])
       _ -> lookupSeqCalledGVar xs gVarList
 
--- Implicitly add called functions
+-- Implicitly add called functions, imported functions and global variables
 implicitlyCalledAdd :: Instr -> ModuleBuilder ()
 implicitlyCalledAdd funcBody = do
   let funcList = lookupCalledFunc funcBody []
@@ -203,6 +209,7 @@ implicitlyCalledAdd funcBody = do
   implicitlyCalledImportAdd importFuncList
   implicitlyCalledGVarAdd gVarList
 
+-- Implicitly add called local functions
 implicitlyCalledFuncAdd :: [WasmFuncT] -> ModuleBuilder ()
 implicitlyCalledFuncAdd funcs = do
   case funcs of
@@ -226,6 +233,7 @@ implicitlyCalledFuncAdd funcs = do
           updateMod (addExport name' (ExpFunc, ename') mod)
     [] -> return ()
 
+-- Implicitly add called imported functions
 implicitlyCalledImportAdd :: [ImportFuncT] -> ModuleBuilder ()
 implicitlyCalledImportAdd importFuncs = do
   case importFuncs of
@@ -280,6 +288,7 @@ implicitlyCalledGVarAddHelper gVar = do
       mod <- gets wasmmod
       updateMod (addExport name (ExpGlobal, ename) mod)
 
+{- Expicitly add global variables -}
 
 addGlobal :: (Mutability m) => GlobalVar m t -> ModuleBuilder ()
 addGlobal (GlobalVar mut name expname init) = do

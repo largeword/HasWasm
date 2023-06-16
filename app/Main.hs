@@ -6,7 +6,7 @@ import HasWasm.Instruction
 
 main :: IO ()
 main = do
-  case buildModule moduleMutualRec of
+  case buildModule moduleIndirect of
     Right result -> putStrLn $ result
     Left err -> putStrLn $ "Error: " ++ err
 
