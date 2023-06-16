@@ -138,18 +138,17 @@ lookupCall funcBody funcList =
 
 lookupAllNestedCallFunc :: [WasmFuncT] -> [WasmFuncT] -> [WasmFuncT]
 lookupAllNestedCallFunc lookupFs storedFs = do
-  let lookupFs' = (Prelude.filter (\x -> x `notElem` storedFs) lookupFs) ++ lookupFs
+  let lookupFs' = Prelude.filter (`notElem` storedFs) lookupFs
   let nestedFuncs = lookupNestedCallFunc lookupFs'
   let flat = concat nestedFuncs
   case nestedFuncs of
-    [] -> storedFs
-    _ -> do
-      lookupAllNestedCallFunc flat (storedFs ++ flat)
+    [] -> lookupFs' ++ storedFs
+    _ -> lookupAllNestedCallFunc flat (lookupFs' ++ storedFs)
 
 lookupNestedCallFunc :: [WasmFuncT] -> [[WasmFuncT]]
 lookupNestedCallFunc [] = []
 lookupNestedCallFunc ((WasmFuncT _ _ _ _ _ funcBody): fs) =
-  lookupNestedCallFunc fs ++ [lookupCalledFunc funcBody []]
+  [lookupCalledFunc funcBody []] ++ lookupNestedCallFunc fs
 
 lookupCalledImport :: [WasmFuncT] -> [ImportFuncT] -> [ImportFuncT]
 lookupCalledImport [] storedImps = storedImps
@@ -199,7 +198,6 @@ implicitlyCalledAdd funcBody = do
   let funcList = lookupCalledFunc funcBody []
   let nestedFuncList = lookupAllNestedCallFunc funcList []
   let importFuncList = lookupCalledImport nestedFuncList []
-  --let gVarList = lookupCalledGVar funcBody []
   let gVarList = lookupAllCalledGVar nestedFuncList []
   implicitlyCalledFuncAdd (funcList ++ nestedFuncList)
   implicitlyCalledImportAdd importFuncList
