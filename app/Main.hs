@@ -6,7 +6,7 @@ import HasWasm.Instruction
 
 main :: IO ()
 main = do
-  case buildModule myModule1 of
+  case buildModule moduleIndirect of
     Right result -> putStrLn $ result
     Left err -> putStrLn $ "Error: " ++ err
 
@@ -38,7 +38,7 @@ myModule2 = createModule $ do
 myModule3 :: WasmModule
 myModule3 = createModule $ do
   addFunc add3
-  addFunc rgb
+  -- addFunc rgb
 
 moduleIndirect :: WasmModule
 moduleIndirect = createModule $ do

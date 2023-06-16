@@ -176,10 +176,18 @@ data WasmFuncT = WasmFuncT String (Maybe String) [TypeTag] [TypeTag] [TypeTag] (
 instance Show WasmFuncT where
   show (WasmFuncT name expname p v r instr) = "(WasmFuncT " ++ name ++ " " ++ show expname ++ " (param " ++ show p ++ ") (var " ++ show v ++") (result " ++ show r ++ ") " ++ show instr ++ ")"
 
+instance Eq WasmFuncT where
+  (WasmFuncT name1 expname1 p1 v1 r1 instr1) == (WasmFuncT name2 expname2 p2 v2 r2 instr2) =
+    name1 == name2 && expname1 == expname2 && p1 == p2 && v1 == v2 && r1 == r2 && instr1 == instr2
+
 data ImportFuncT = ImportFuncT String String String [TypeTag] [TypeTag]
 
 instance Show ImportFuncT where
   show (ImportFuncT immod imname locname p r) = "(ImportFuncT " ++ immod ++ " " ++ locname ++ " " ++ locname ++ " (param " ++ show p ++ ") (result " ++ show r ++ "))"
+
+instance Eq ImportFuncT where
+  (ImportFuncT immod1 imname1 locname1 p1 r1) == (ImportFuncT immod2 imname2 locname2 p2 r2) =
+    immod1 == immod2 && imname1 == imname2 && locname1 == locname2 && p1 == p2 && r1 == r2
 
 type FuncBody s r = TypedInstr s (StackType r s)
 type ReturnInstr s r = forall s2. TypedInstr (StackType r s) s2
@@ -365,3 +373,25 @@ instance Show Instr where
   show (LocalSet i) = "local.set " ++ show i
   show (GlobalGet _) = "global.get "
   show (GlobalSet _) = "global.set "
+
+instance Eq Instr where
+  (Sequence s1) == (Sequence s2) = s1 == s2
+  (I32Const i1) == (I32Const i2) = i1 == i2
+  (I32Binary op1) == (I32Binary op2) = op1 == op2
+  (I32Unary op1) == (I32Unary op2) = op1 == op2
+  (I32Compare op1) == (I32Compare op2) = op1 == op2
+  (F32Const f1) == (F32Const f2) = f1 == f2
+  (F32Binary op1) == (F32Binary op2) = op1 == op2
+  (F32Unary op1) == (F32Unary op2) = op1 == op2
+  (F32Compare op1) == (F32Compare op2) = op1 == op2
+  (Block b1 typeP1 typeV1 _) == (Block b2 typeP2 typeV2 _) = b1 == b2 && typeP1 == typeP2 && typeV1 == typeV2
+  (Branch i1) == (Branch i2) = i1 == i2
+  (BranchIf i1) == (BranchIf i2) = i1 == i2
+  (Call wasmFuncT1) == (Call wasmFuncT2) = wasmFuncT1 == wasmFuncT2
+  (CallImport f1) == (CallImport f2) = f1 == f2
+  Return == Return = True
+  (LocalGet i1) == (LocalGet i2) = i1 == i2
+  (LocalSet i1) == (LocalSet i2) = i1 == i2
+  (GlobalGet _) == (GlobalGet _) = True
+  (GlobalSet _) == (GlobalSet _) = True
+  _ == _ = False
