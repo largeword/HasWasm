@@ -39,7 +39,7 @@ data WasmModuleT = WasmModuleT {
   exports :: Map String ExportDecl,
   imports :: Map String ImportFuncT}
 
-data Declaration = FuncDecl WasmFuncT Bool | GlobalDecl String (Maybe String) Bool InitValue | ImportFuncDecl
+data Declaration = FuncDecl WasmFuncT Bool | GlobalDecl String (Maybe String) Bool InitValue Bool | ImportFuncDecl
 type ExportDecl = (ExportType, String)
 data ExportType = ExpFunc | ExpGlobal
 
@@ -85,15 +85,15 @@ addFunc (WasmFunc _ func@(WasmFuncT name expname p v r funcBody)) = do
     -- If find a declaration, check if it is added explicitly
     Just (FuncDecl (WasmFuncT _ _ p' v' r' _) isAddedExplicitly) -> do
       if isAddedExplicitly then throwE $ "Function " ++ name ++ " is already defined"
-      else 
+      else
         if (p' == p) && (v' == v) && (r' == r) then do
           -- If the signature is the same, update the declaration into explicitly added one
           updateMod (addDeclaration name decl mod)
         else throwE $ "Function " ++ name ++ " is already declared and has different signature"
 
     Nothing -> do
-      updateMod (addDeclaration name decl mod) -- TODO: recurse to find implicitly called functions?
-      implicitlyCalledFuncAdd funcBody
+      updateMod (addDeclaration name decl mod)
+      implicitlyCalledAdd funcBody
     _ -> throwE $ "Name is already declared but not a function: " ++ name
 
   case expname of
@@ -121,26 +121,49 @@ lookupCalledFunc funcBody funcList =
   case funcBody of
     Call wasmFuncT -> funcList ++ [wasmFuncT]
     Sequence instrSeq -> do
-      lookupInstrSeq instrSeq funcList
+      lookupCall instrSeq funcList
     _ -> funcList
 
 -- Extract all the functions called in a sequence of instructions
-lookupInstrSeq :: Seq Instr -> [WasmFuncT] -> [WasmFuncT]
-lookupInstrSeq funcBody funcList =
+lookupCall :: Seq Instr -> [WasmFuncT] -> [WasmFuncT]
+lookupCall funcBody funcList =
   case funcBody of
     Empty -> funcList
     x :<| xs -> case x of
-      Call wasmFuncT -> lookupInstrSeq xs (funcList ++ [wasmFuncT])
-      _ -> lookupInstrSeq xs funcList
+      Call wasmFuncT -> lookupCall xs (funcList ++ [wasmFuncT])
+      _ -> lookupCall xs funcList
+
+-- Extract all the functions called in the body of a declaring function
+lookupCalledGVar :: Instr -> [GlobalVarData] -> [GlobalVarData]
+lookupCalledGVar funcBody funcList =
+  case funcBody of
+    GlobalGet globalVar -> funcList ++ [globalVar]
+    GlobalSet globalVar -> funcList ++ [globalVar]
+    Sequence instrSeq -> do
+      lookupGVar instrSeq funcList
+    _ -> funcList
+
+-- Extract all the global variables called in a sequence of instructions
+lookupGVar :: Seq Instr -> [GlobalVarData] -> [GlobalVarData]
+lookupGVar funcBody gVarList =
+  case funcBody of
+    Empty -> gVarList
+    x :<| xs -> case x of
+      GlobalGet globalVar -> lookupGVar xs (gVarList ++ [globalVar])
+      GlobalSet globalVar -> lookupGVar xs (gVarList ++ [globalVar])
+      _ -> lookupGVar xs gVarList
+
 
 -- Implicitly add called functions 
-implicitlyCalledFuncAdd :: Instr -> ModuleBuilder ()
-implicitlyCalledFuncAdd funcBody = do
+implicitlyCalledAdd :: Instr -> ModuleBuilder ()
+implicitlyCalledAdd funcBody = do
   let funcList = lookupCalledFunc funcBody []
-  implicitlyCalledFuncAddHelper funcList
+  let gVarList = lookupCalledGVar funcBody []
+  implicitlyCalledFuncAdd funcList
+  implicitlyCalledGVarAdd gVarList
 
-implicitlyCalledFuncAddHelper :: [WasmFuncT] -> ModuleBuilder ()
-implicitlyCalledFuncAddHelper funcs = do
+implicitlyCalledFuncAdd :: [WasmFuncT] -> ModuleBuilder ()
+implicitlyCalledFuncAdd funcs = do
   case funcs of
     f : fs -> do
       let (WasmFuncT name' expname' p' v' r' _) = f
@@ -149,11 +172,11 @@ implicitlyCalledFuncAddHelper funcs = do
       case findIn declarations name' mod of
         Nothing -> do
           updateMod (addDeclaration name' decl' mod)
-          implicitlyCalledFuncAddHelper fs
+          implicitlyCalledFuncAdd fs
         Just (FuncDecl (WasmFuncT _ _ p v r _) _) -> do
-          if (p' == p) && (v' == v) && (r' == r) then implicitlyCalledFuncAddHelper fs
+          if (p' == p) && (v' == v) && (r' == r) then implicitlyCalledFuncAdd fs
           else throwE $ "Called function " ++ name' ++ " is already declared but has different signature"
-        _ -> throwE $ "implicitlyCalledFuncAddHelper PANIC! Name is already declared but the called function is not a function: " ++ name'
+        _ -> throwE $ "implicitlyCalledFuncAdd PANIC! Name is already declared but the called function is not a function: " ++ name'
 
       case expname' of
         Nothing -> return ()
@@ -162,14 +185,55 @@ implicitlyCalledFuncAddHelper funcs = do
           updateMod (addExport name' (ExpFunc, ename') mod)
     [] -> return ()
 
+-- Implicitly add called global variables
+implicitlyCalledGVarAdd :: [GlobalVarData] -> ModuleBuilder ()
+implicitlyCalledGVarAdd gVars = do
+  case gVars of
+    v : vs -> case v of
+      MutI32 (GlobalVar mut name expname init) -> do
+        implicitlyCalledGVarAddHelper (GlobalVar mut name expname init)
+        implicitlyCalledGVarAdd vs
+      MutF32 (GlobalVar mut name expname init) -> do
+        implicitlyCalledGVarAddHelper (GlobalVar mut name expname init)
+        implicitlyCalledGVarAdd vs
+      ImmI32 (GlobalVar mut name expname init) -> do
+        implicitlyCalledGVarAddHelper (GlobalVar mut name expname init)
+        implicitlyCalledGVarAdd vs
+      ImmF32 (GlobalVar mut name expname init) -> do
+        implicitlyCalledGVarAddHelper (GlobalVar mut name expname init)
+        implicitlyCalledGVarAdd vs
+    [] -> return ()
+
+-- Add each global var implicitly called in the body of a declaring function
+implicitlyCalledGVarAddHelper :: (Mutability m) => GlobalVar m t -> ModuleBuilder ()
+implicitlyCalledGVarAddHelper gVar = do
+  let (GlobalVar mut name expname initVar) = gVar
+  let decl = GlobalDecl name expname (isMutable mut) initVar False
+  mod <- gets wasmmod
+  case findIn declarations name mod of
+    Nothing -> do
+      updateMod (addDeclaration name decl mod)
+    Just (GlobalDecl name' expname' mutable' initVar' _) -> do
+      if (expname == expname') && (isMutable mut == mutable') && (initVar == initVar') then return ()
+      else throwE $ "Called global var " ++ name' ++ " is already declared but has different specs"
+    _ -> throwE $ "implicitlyCalledGVarAddHelper PANIC! Name is already declared but the called global var is not a global var: " ++ name
+  case expname of
+    Nothing -> return ()
+    Just ename -> do
+      mod <- gets wasmmod
+      updateMod (addExport name (ExpGlobal, ename) mod)
+
 
 addGlobal :: (Mutability m) => GlobalVar m t -> ModuleBuilder ()
 addGlobal (GlobalVar mut name expname init) = do
-  let decl = GlobalDecl name expname (isMutable mut) init
+  let decl = GlobalDecl name expname (isMutable mut) init True
   mod <- gets wasmmod
   case findIn declarations name mod of
-    Just _ -> throwE $ "Name is already declared: " ++ name
+    Just (GlobalDecl _ _ _ _ isAddedExplicitly) -> do
+      if isAddedExplicitly then throwE $ "Global variable " ++ name ++ " is already defined"
+      else updateMod (addDeclaration name decl mod)
     Nothing -> updateMod (addDeclaration name decl mod)
+    _ -> throwE $ "Name is already declared but not a global var: " ++ name
 
   case expname of
     Nothing -> return ()
@@ -223,7 +287,7 @@ printDeclarations = Map.foldr go id
 
 printDeclaration :: Declaration -> ShowS
 printDeclaration (FuncDecl f _) = printFunc f
-printDeclaration (GlobalDecl name _  mut init) =
+printDeclaration (GlobalDecl name _  mut init _) =
   printModuleTab . ("(global " ++) . printName name . showinit init . ("))\n" ++)
   where
     showinit (InitI i) = ismut mut "i32" . (" (i32.const " ++) . shows i
@@ -309,8 +373,16 @@ printInstr (Call (WasmFuncT name _ _ _ _ _) ) = return $ ("call " ++) . printNam
 printInstr (Return ) = return ("return" ++)
 printInstr (LocalGet i) = return $ ("local.get " ++) . shows i
 printInstr (LocalSet i) = return $ ("local.set " ++) . shows i
-printInstr (GlobalGet name) = return $ ("global.get " ++) . printName name
-printInstr (GlobalSet name) = return $ ("global.set " ++) . printName name
+
+printInstr (GlobalGet (MutI32 (GlobalVar _ name _ _))) = return $ ("global.get " ++) . printName name
+printInstr (GlobalGet (ImmI32 (GlobalVar _ name _ _))) = return $ ("global.get " ++) . printName name
+printInstr (GlobalGet (MutF32 (GlobalVar _ name _ _))) = return $ ("global.get " ++) . printName name
+printInstr (GlobalGet (ImmF32 (GlobalVar _ name _ _))) = return $ ("global.get " ++) . printName name
+
+printInstr (GlobalSet (MutI32 (GlobalVar _ name _ _))) = return $ ("global.set " ++) . printName name
+printInstr (GlobalSet (ImmI32 (GlobalVar _ name _ _))) = return $ ("global.set " ++) . printName name
+printInstr (GlobalSet (MutF32 (GlobalVar _ name _ _))) = return $ ("global.set " ++) . printName name
+printInstr (GlobalSet (ImmF32 (GlobalVar _ name _ _))) = return $ ("global.set " ++) . printName name
 
 printLabel :: Int -> ShowS
 printLabel n = ("$l" ++) . shows n

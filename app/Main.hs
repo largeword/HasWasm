@@ -17,8 +17,16 @@ myModule = createModule $ do
   addGlobal immvar
   addFunc mathsqrt
 
+myModule0 :: WasmModule
+myModule0 = createModule $ do
+  addFunc addCounter
+  addFunc mathsqrt
+  addGlobal counter
+
 myModule1 :: WasmModule
 myModule1 = createModule $ do
+  addFunc addCounter
+  addFunc mathsqrt
   addFunc add3
 
 myModule2 :: WasmModule

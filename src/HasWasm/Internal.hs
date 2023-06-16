@@ -15,6 +15,7 @@ module HasWasm.Internal  (
   Stack,
   (:+),
   Instr(..),
+  GlobalVarData(..),
   BinOpI(..),
   UnOpI(..),
   RelOpI(..),
@@ -103,8 +104,14 @@ data Instr =
   Return |
   LocalGet Int |
   LocalSet Int |
-  GlobalGet String |
-  GlobalSet String
+  GlobalGet GlobalVarData |
+  GlobalSet GlobalVarData
+
+data GlobalVarData = 
+  MutI32 (GlobalVar Mut I32) |
+  MutF32 (GlobalVar Mut F32) |
+  ImmI32 (GlobalVar Imm I32) |
+  ImmF32 (GlobalVar Imm F32)
 
 instance Show Instr where
   show (Sequence s) = show s
@@ -116,15 +123,15 @@ instance Show Instr where
   show (F32Binary op) = "f32." ++ show op
   show (F32Unary op) = "f32." ++ show op
   show (F32Compare op) = "f32." ++ show op
-  show (Block b typeP typeV typeR) = "block " ++ show b ++ " (" ++ show typeP ++ ") (" ++ show typeV ++ ")"
+  show (Block b typeP typeV _) = "block " ++ show b ++ " (" ++ show typeP ++ ") (" ++ show typeV ++ ")"
   show (Branch i) = "br " ++ show i
   show (BranchIf i) = "br_if " ++ show i
   show (Call wasmFuncT) = "call " ++ show wasmFuncT
   show Return = "return"
   show (LocalGet i) = "local.get " ++ show i
   show (LocalSet i) = "local.set " ++ show i
-  show (GlobalGet name) = "global.get " ++ name
-  show (GlobalSet name) = "global.set " ++ name
+  show (GlobalGet _) = "global.get "
+  show (GlobalSet _) = "global.set "
 
 newtype (Stack a, Stack b) => TypedInstr a b = TypedInstr Instr
 
@@ -157,7 +164,8 @@ createGlobalI32 name expname val = GlobalVar mval name expname (InitI val)
 createGlobalF32 :: (Mutability m) => String -> Maybe String -> Float -> GlobalVar m F32
 createGlobalF32 name expname val = GlobalVar mval name expname (InitF val)
 
-data InitValue = InitI Int | InitF Float
+data InitValue = InitI Int | InitF Float 
+  deriving Eq
 
 data Mut = Mut
 data Imm = Imm

@@ -251,10 +251,18 @@ local_set :: (Stack s) => Var t -> TypedInstr (s :+ t) s
 local_set (Var i) = TypedInstr $ LocalSet i
 
 global_get :: (Mutability m, Stack s) => GlobalVar m t -> TypedInstr s (s :+ t)
-global_get (GlobalVar _ name _ _) = TypedInstr $ GlobalGet name
+global_get (GlobalVar m name expname (InitI x)) = do
+  if isMutable m
+    then TypedInstr $ GlobalGet (MutI32 (GlobalVar Mut name expname (InitI x)))
+    else TypedInstr $ GlobalGet (ImmI32 (GlobalVar Imm name expname (InitI x)))
+global_get (GlobalVar m name expname (InitF x)) = do
+  if isMutable m
+    then TypedInstr $ GlobalGet (MutF32 (GlobalVar Mut name expname (InitF x)))
+    else TypedInstr $ GlobalGet (ImmF32 (GlobalVar Imm name expname (InitF x)))
 
 global_set :: (Stack s) => GlobalVar Mut t -> TypedInstr (s :+ t) s
-global_set (GlobalVar _ name _ _) = TypedInstr $ GlobalSet name
+global_set (GlobalVar Mut name expname (InitI x)) = TypedInstr $ GlobalSet (MutI32 (GlobalVar Mut name expname (InitI x)))
+global_set (GlobalVar Mut name expname (InitF x)) = TypedInstr $ GlobalSet (MutF32 (GlobalVar Mut name expname (InitF x)))
 
 {- Helper Instructions -}
 
