@@ -104,9 +104,12 @@ addFunc (WasmFunc _ func@(WasmFuncT name expname p v r funcBody)) = do
 addFunc (ImportFunc _ func@(ImportFuncT _ _ name _ _)) = do
   mod <- gets wasmmod
   case findIn declarations name mod of
-    Just _ -> throwE $ "Imported name is already declared: " ++ name
+    Just (ImportFuncDecl isAddedExplicitly) -> do
+      if isAddedExplicitly then throwE $ "Imported function " ++ name ++ " is already declared"
+      else updateMod (addDeclaration name (ImportFuncDecl True) mod)
     Nothing -> updateMod (addDeclaration name (ImportFuncDecl True) mod) -- only for marking the name usage
-
+    _ -> throwE $ "Name is already declared but not a import function: " ++ name
+  
   -- the actual definition is stored in imports
   mod <- gets wasmmod
   updateMod (addImport name func mod)
@@ -132,6 +135,22 @@ lookupCall funcBody funcList =
       Call wasmFuncT -> lookupCall xs (funcList ++ [wasmFuncT])
       _ -> lookupCall xs funcList
 
+lookupCalledImport :: Instr -> [ImportFuncT] -> [ImportFuncT]
+lookupCalledImport funcBody funcList =
+  case funcBody of
+    CallImport importFuncT -> funcList ++ [importFuncT]
+    Sequence instrSeq -> do
+      lookupImport instrSeq funcList
+    _ -> funcList
+
+lookupImport :: Seq Instr -> [ImportFuncT] -> [ImportFuncT]
+lookupImport funcBody funcList =
+  case funcBody of
+    Empty -> funcList
+    x :<| xs -> case x of
+      CallImport importFuncT -> lookupImport xs (funcList ++ [importFuncT])
+      _ -> lookupImport xs funcList
+
 -- Extract all the functions called in the body of a declaring function
 lookupCalledGVar :: Instr -> [GlobalVarData] -> [GlobalVarData]
 lookupCalledGVar funcBody funcList =
@@ -156,8 +175,10 @@ lookupGVar funcBody gVarList =
 implicitlyCalledAdd :: Instr -> ModuleBuilder ()
 implicitlyCalledAdd funcBody = do
   let funcList = lookupCalledFunc funcBody []
+  let importFuncList = lookupCalledImport funcBody []
   let gVarList = lookupCalledGVar funcBody []
   implicitlyCalledFuncAdd funcList
+  implicitlyCalledImportAdd importFuncList
   implicitlyCalledGVarAdd gVarList
 
 implicitlyCalledFuncAdd :: [WasmFuncT] -> ModuleBuilder ()
@@ -181,6 +202,22 @@ implicitlyCalledFuncAdd funcs = do
         Just ename' -> do
           mod <- gets wasmmod
           updateMod (addExport name' (ExpFunc, ename') mod)
+    [] -> return ()
+
+implicitlyCalledImportAdd :: [ImportFuncT] -> ModuleBuilder ()
+implicitlyCalledImportAdd importFuncs = do
+  case importFuncs of
+    f : fs -> do
+      let func@(ImportFuncT _ imname locname p r) = f
+      mod <- gets wasmmod
+      case findIn declarations locname mod of
+        Nothing -> do
+          updateMod (addDeclaration locname (ImportFuncDecl False) mod)
+          mod <- gets wasmmod
+          updateMod (addImport locname func mod)
+          implicitlyCalledImportAdd fs
+        Just (ImportFuncDecl _) -> implicitlyCalledImportAdd fs
+        _ -> throwE $ "implicitlyCalledImportAdd PANIC! Name is already declared but the called function is not an import function: " ++ locname
     [] -> return ()
 
 -- Implicitly add called global variables
