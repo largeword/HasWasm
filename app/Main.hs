@@ -6,7 +6,7 @@ import HasWasm.Instruction
 
 main :: IO ()
 main = do
-  case buildModule moduleIndirect of
+  case buildModule moduleMutualRec of
     Right result -> putStrLn $ result
     Left err -> putStrLn $ "Error: " ++ err
 
@@ -157,8 +157,8 @@ rec3 :: WasmFunc I32 () I32
 rec3 = createExpFunction "rec3" func where
   func n _ ret =
     block () I32 (\lbl ->
-      local_get n #
-      local_get n #
+      global_get counter #
+      global_get immvar #
       br_if lbl #
       i32_const 1 #
       i32_sub #

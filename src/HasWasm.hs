@@ -123,54 +123,54 @@ lookupCalledFunc funcBody funcList =
   case funcBody of
     Call wasmFuncT -> funcList ++ [wasmFuncT]
     Block _ _ _ lb2instr -> lookupCalledFunc (lb2instr 0) funcList  -- use random label to get instr
-    Sequence instrSeq -> lookupCall instrSeq funcList
+    Sequence instrSeq -> lookupSeqCalledFunc instrSeq funcList
     _ -> funcList
 
 -- Extract all the functions called in a sequence of instructions
-lookupCall :: Seq Instr -> [WasmFuncT] -> [WasmFuncT]
-lookupCall funcBody funcList =
+lookupSeqCalledFunc :: Seq Instr -> [WasmFuncT] -> [WasmFuncT]
+lookupSeqCalledFunc funcBody funcList =
   case funcBody of
     Empty -> funcList
     x :<| xs -> case x of
-      Call wasmFuncT -> lookupCall xs (funcList ++ [wasmFuncT])
-      Block _ _ _ lb2instr -> lookupCall xs (funcList ++ lookupCalledFunc (lb2instr 0) funcList)
-      _ -> lookupCall xs funcList
+      Call wasmFuncT -> lookupSeqCalledFunc xs (funcList ++ [wasmFuncT])
+      Block _ _ _ lb2instr -> lookupSeqCalledFunc xs (funcList ++ lookupCalledFunc (lb2instr 0) funcList)
+      _ -> lookupSeqCalledFunc xs funcList
 
-lookupAllNestedCallFunc :: [WasmFuncT] -> [WasmFuncT] -> [WasmFuncT]
-lookupAllNestedCallFunc lookupFs storedFs = do
+lookupNestedCallFunc :: [WasmFuncT] -> [WasmFuncT] -> [WasmFuncT]
+lookupNestedCallFunc lookupFs storedFs = do
   let lookupFs' = Prelude.filter (`notElem` storedFs) lookupFs
-  let nestedFuncs = lookupNestedCallFunc lookupFs'
+  let nestedFuncs = lookupNestedCallFunc' lookupFs'
   let flat = concat nestedFuncs
   case nestedFuncs of
     [] -> lookupFs' ++ storedFs
-    _ -> lookupAllNestedCallFunc flat (lookupFs' ++ storedFs)
+    _ -> lookupNestedCallFunc flat (lookupFs' ++ storedFs)
 
-lookupNestedCallFunc :: [WasmFuncT] -> [[WasmFuncT]]
-lookupNestedCallFunc [] = []
-lookupNestedCallFunc ((WasmFuncT _ _ _ _ _ funcBody): fs) =
-  [lookupCalledFunc funcBody []] ++ lookupNestedCallFunc fs
+lookupNestedCallFunc' :: [WasmFuncT] -> [[WasmFuncT]]
+lookupNestedCallFunc' [] = []
+lookupNestedCallFunc' ((WasmFuncT _ _ _ _ _ funcBody): fs) = lookupCalledFunc funcBody [] : lookupNestedCallFunc' fs
 
-lookupCalledImport :: [WasmFuncT] -> [ImportFuncT] -> [ImportFuncT]
-lookupCalledImport [] storedImps = storedImps
-lookupCalledImport ((WasmFuncT _ _ _ _ _ funcBody):fs) storedImps =
+lookupNestedCalledImport :: [WasmFuncT] -> [ImportFuncT] -> [ImportFuncT]
+lookupNestedCalledImport [] storedImps = storedImps
+lookupNestedCalledImport ((WasmFuncT _ _ _ _ _ funcBody):fs) storedImps =
   case funcBody of
-    CallImport importFuncT -> lookupCalledImport fs (storedImps ++ [importFuncT])
-    Sequence instrSeq -> do
-      lookupCalledImport fs (storedImps ++ lookupImport instrSeq [])
-    _ -> lookupCalledImport fs storedImps
+    CallImport importFuncT -> lookupNestedCalledImport fs (storedImps ++ [importFuncT])
+    Block _ _ _ lb2instr -> do
+      let instr = lb2instr 0
+      lookupNestedCalledImport fs (storedImps ++ lookupNestedCalledImport [WasmFuncT "temp" (Just "temp") [] [] [] instr] [])
+    Sequence instrSeq -> lookupNestedCalledImport fs (storedImps ++ lookupSeqCalledImport instrSeq [])
+    _ -> lookupNestedCalledImport fs storedImps
 
-lookupImport :: Seq Instr -> [ImportFuncT] -> [ImportFuncT]
-lookupImport funcBody funcList =
+lookupSeqCalledImport :: Seq Instr -> [ImportFuncT] -> [ImportFuncT]
+lookupSeqCalledImport funcBody funcList =
   case funcBody of
     Empty -> funcList
     x :<| xs -> case x of
-      CallImport importFuncT -> lookupImport xs (funcList ++ [importFuncT])
-      _ -> lookupImport xs funcList
+      CallImport importFuncT -> lookupSeqCalledImport xs (funcList ++ [importFuncT])
+      _ -> lookupSeqCalledImport xs funcList
 
-lookupAllCalledGVar :: [WasmFuncT] -> [GlobalVarData] -> [GlobalVarData]
-lookupAllCalledGVar [] storedGVars = storedGVars
-lookupAllCalledGVar ((WasmFuncT _ _ _ _ _ funcBody):fs) storedGVars =
-  lookupAllCalledGVar fs (storedGVars ++ lookupCalledGVar funcBody [])
+lookupNestedCalledGVar :: [WasmFuncT] -> [GlobalVarData] -> [GlobalVarData]
+lookupNestedCalledGVar [] storedGVars = storedGVars
+lookupNestedCalledGVar ((WasmFuncT _ _ _ _ _ funcBody):fs) storedGVars = lookupNestedCalledGVar fs (storedGVars ++ lookupCalledGVar funcBody [])
 
 -- Extract all the functions called in the body of a declaring function
 lookupCalledGVar :: Instr -> [GlobalVarData] -> [GlobalVarData]
@@ -178,27 +178,27 @@ lookupCalledGVar funcBody funcList =
   case funcBody of
     GlobalGet globalVar -> funcList ++ [globalVar]
     GlobalSet globalVar -> funcList ++ [globalVar]
-    Sequence instrSeq -> do
-      lookupGVar instrSeq funcList
+    Block _ _ _ lb2instr -> lookupCalledGVar (lb2instr 0) funcList  -- use random label to get instr
+    Sequence instrSeq -> lookupSeqCalledGVar instrSeq funcList
     _ -> funcList
 
 -- Extract all the global variables called in a sequence of instructions
-lookupGVar :: Seq Instr -> [GlobalVarData] -> [GlobalVarData]
-lookupGVar funcBody gVarList =
+lookupSeqCalledGVar :: Seq Instr -> [GlobalVarData] -> [GlobalVarData]
+lookupSeqCalledGVar funcBody gVarList =
   case funcBody of
     Empty -> gVarList
     x :<| xs -> case x of
-      GlobalGet globalVar -> lookupGVar xs (gVarList ++ [globalVar])
-      GlobalSet globalVar -> lookupGVar xs (gVarList ++ [globalVar])
-      _ -> lookupGVar xs gVarList
+      GlobalGet globalVar -> lookupSeqCalledGVar xs (gVarList ++ [globalVar])
+      GlobalSet globalVar -> lookupSeqCalledGVar xs (gVarList ++ [globalVar])
+      _ -> lookupSeqCalledGVar xs gVarList
 
 -- Implicitly add called functions
 implicitlyCalledAdd :: Instr -> ModuleBuilder ()
 implicitlyCalledAdd funcBody = do
   let funcList = lookupCalledFunc funcBody []
-  let nestedFuncList = lookupAllNestedCallFunc funcList []
-  let importFuncList = lookupCalledImport nestedFuncList []
-  let gVarList = lookupAllCalledGVar nestedFuncList []
+  let nestedFuncList = lookupNestedCallFunc funcList []
+  let importFuncList = lookupNestedCalledImport nestedFuncList []
+  let gVarList = lookupNestedCalledGVar nestedFuncList []
   implicitlyCalledFuncAdd (funcList ++ nestedFuncList)
   implicitlyCalledImportAdd importFuncList
   implicitlyCalledGVarAdd gVarList
