@@ -101,37 +101,18 @@ data Instr =
   Branch LabelId |
   BranchIf LabelId |
   Call WasmFuncT |
+  CallImport ImportFuncT |
   Return |
   LocalGet Int |
   LocalSet Int |
   GlobalGet GlobalVarData |
   GlobalSet GlobalVarData
 
-data GlobalVarData = 
+data GlobalVarData =
   MutI32 (GlobalVar Mut I32) |
   MutF32 (GlobalVar Mut F32) |
   ImmI32 (GlobalVar Imm I32) |
   ImmF32 (GlobalVar Imm F32)
-
-instance Show Instr where
-  show (Sequence s) = show s
-  show (I32Const i) = "i32.const " ++ show i
-  show (I32Binary op) = "i32." ++ show op
-  show (I32Unary op) = "i32." ++ show op
-  show (I32Compare op) = "i32." ++ show op
-  show (F32Const f) = "f32.const " ++ show f
-  show (F32Binary op) = "f32." ++ show op
-  show (F32Unary op) = "f32." ++ show op
-  show (F32Compare op) = "f32." ++ show op
-  show (Block b typeP typeV _) = "block " ++ show b ++ " (" ++ show typeP ++ ") (" ++ show typeV ++ ")"
-  show (Branch i) = "br " ++ show i
-  show (BranchIf i) = "br_if " ++ show i
-  show (Call wasmFuncT) = "call " ++ show wasmFuncT
-  show Return = "return"
-  show (LocalGet i) = "local.get " ++ show i
-  show (LocalSet i) = "local.set " ++ show i
-  show (GlobalGet _) = "global.get "
-  show (GlobalSet _) = "global.set "
 
 newtype (Stack a, Stack b) => TypedInstr a b = TypedInstr Instr
 
@@ -164,7 +145,7 @@ createGlobalI32 name expname val' = GlobalVar mval name expname (InitI val')
 createGlobalF32 :: (Mutability m) => String -> Maybe String -> Float -> GlobalVar m F32
 createGlobalF32 name expname val' = GlobalVar mval name expname (InitF val')
 
-data InitValue = InitI Int | InitF Float 
+data InitValue = InitI Int | InitF Float
   deriving Eq
 
 data Mut = Mut
@@ -187,8 +168,8 @@ data WasmFunc p v r where
   ImportFunc :: (VarTypes p, VarTypes r) => (p, r) -> ImportFuncT -> WasmFunc p () r
 
 instance Show (WasmFunc p v r) where
-  show (WasmFunc (p, v, r) wasmFuncT) = show wasmFuncT
-  show (ImportFunc (p, r) importFuncT) = show importFuncT
+  show (WasmFunc _ wasmFuncT) = show wasmFuncT
+  show (ImportFunc _ importFuncT) = show importFuncT
 
 data WasmFuncT = WasmFuncT String (Maybe String) [TypeTag] [TypeTag] [TypeTag] (Instr)
 
@@ -198,7 +179,7 @@ instance Show WasmFuncT where
 data ImportFuncT = ImportFuncT String String String [TypeTag] [TypeTag]
 
 instance Show ImportFuncT where
-  show (ImportFuncT name modulename expname p r) = "(ImportFuncT " ++ name ++ " " ++ modulename ++ " " ++ expname ++ " (param " ++ show p ++ ") (result " ++ show r ++ "))"
+  show (ImportFuncT immod imname locname p r) = "(ImportFuncT " ++ immod ++ " " ++ locname ++ " " ++ locname ++ " (param " ++ show p ++ ") (result " ++ show r ++ "))"
 
 type FuncBody s r = TypedInstr s (StackType r s)
 type ReturnInstr s r = forall s2. TypedInstr (StackType r s) s2
@@ -363,3 +344,24 @@ instance Show RelOpF where
   show GTF = "gt"
   show LEF = "le"
   show GEF = "ge"
+
+instance Show Instr where
+  show (Sequence s) = show s
+  show (I32Const i) = "i32.const " ++ show i
+  show (I32Binary op) = "i32." ++ show op
+  show (I32Unary op) = "i32." ++ show op
+  show (I32Compare op) = "i32." ++ show op
+  show (F32Const f) = "f32.const " ++ show f
+  show (F32Binary op) = "f32." ++ show op
+  show (F32Unary op) = "f32." ++ show op
+  show (F32Compare op) = "f32." ++ show op
+  show (Block b typeP typeV _) = "block " ++ show b ++ " (" ++ show typeP ++ ") (" ++ show typeV ++ ")"
+  show (Branch i) = "br " ++ show i
+  show (BranchIf i) = "br_if " ++ show i
+  show (Call wasmFuncT) = "call " ++ show wasmFuncT
+  show (CallImport f) = "call " ++ show f
+  show Return = "return"
+  show (LocalGet i) = "local.get " ++ show i
+  show (LocalSet i) = "local.set " ++ show i
+  show (GlobalGet _) = "global.get "
+  show (GlobalSet _) = "global.set "

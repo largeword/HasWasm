@@ -1,5 +1,6 @@
 {-# LANGUAGE TypeOperators #-}
 {-# LANGUAGE AllowAmbiguousTypes #-}
+{-# LANGUAGE GADTs #-}
 
 module HasWasm.Instruction (
   -- instructions
@@ -243,6 +244,7 @@ loop p r body = TypedInstr $ Block True  (typetags p) (typetags r) (untype . bod
 
 call :: (Stack s, VarTypes p, VarTypes v, VarTypes r) => WasmFunc p v r -> FuncCallType s p r
 call (WasmFunc _ func) = TypedInstr $ Call func
+call (ImportFunc _ func) = TypedInstr $ CallImport func
 
 local_get :: (Stack s) => Var t -> TypedInstr s (s :+ t)
 local_get (Var i) = TypedInstr $ LocalGet i

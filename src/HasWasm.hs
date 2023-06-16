@@ -27,9 +27,8 @@ import Control.Monad.State
 import Control.Monad.Except
 import Control.Monad.Trans.Except
 import Data.Map ( Map )
-import Data.Sequence (Seq (Empty, (:<|), (:|>)))
+import Data.Sequence
 import qualified Data.Map as Map
-import HasWasm.Instruction (call)
 
 {- WASM Module -}
 
@@ -39,7 +38,7 @@ data WasmModuleT = WasmModuleT {
   exports :: Map String ExportDecl,
   imports :: Map String ImportFuncT}
 
-data Declaration = FuncDecl WasmFuncT Bool | GlobalDecl String (Maybe String) Bool InitValue Bool | ImportFuncDecl
+data Declaration = FuncDecl WasmFuncT Bool | GlobalDecl String (Maybe String) Bool InitValue Bool | ImportFuncDecl Bool
 type ExportDecl = (ExportType, String)
 data ExportType = ExpFunc | ExpGlobal
 
@@ -106,7 +105,7 @@ addFunc (ImportFunc _ func@(ImportFuncT _ _ name _ _)) = do
   mod <- gets wasmmod
   case findIn declarations name mod of
     Just _ -> throwE $ "Imported name is already declared: " ++ name
-    Nothing -> updateMod (addDeclaration name ImportFuncDecl mod) -- only for marking the name usage
+    Nothing -> updateMod (addDeclaration name (ImportFuncDecl True) mod) -- only for marking the name usage
 
   -- the actual definition is stored in imports
   mod <- gets wasmmod
@@ -153,8 +152,7 @@ lookupGVar funcBody gVarList =
       GlobalSet globalVar -> lookupGVar xs (gVarList ++ [globalVar])
       _ -> lookupGVar xs gVarList
 
-
--- Implicitly add called functions 
+-- Implicitly add called functions
 implicitlyCalledAdd :: Instr -> ModuleBuilder ()
 implicitlyCalledAdd funcBody = do
   let funcList = lookupCalledFunc funcBody []
@@ -294,7 +292,7 @@ printDeclaration (GlobalDecl name _  mut init _) =
     showinit (InitF f) = ismut mut "f32" . (" (f32.const " ++) . shows f
     ismut True t = (" (mut " ++) . (t ++) . (")" ++)
     ismut False t = (" " ++) . (t ++)
-printDeclaration (ImportFuncDecl) = id
+printDeclaration (ImportFuncDecl _) = id
 
 printFunc :: WasmFuncT -> ShowS
 printFunc (WasmFuncT name _ params locals results body) =
@@ -370,6 +368,7 @@ printInstr (Block isLoop params results f ) =
 printInstr (Branch l ) = return $ ("br " ++) . printLabel l
 printInstr (BranchIf l) = return $ ("br_if " ++) . printLabel l
 printInstr (Call (WasmFuncT name _ _ _ _ _) ) = return $ ("call " ++) . printName name
+printInstr (CallImport (ImportFuncT _ _ name _ _) ) = return $ ("call " ++) . printName name
 printInstr (Return ) = return ("return" ++)
 printInstr (LocalGet i) = return $ ("local.get " ++) . shows i
 printInstr (LocalSet i) = return $ ("local.set " ++) . shows i

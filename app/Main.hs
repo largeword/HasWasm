@@ -6,7 +6,7 @@ import HasWasm.Instruction
 
 main :: IO ()
 main = do
-  case buildModule myModule1 of
+  case buildModule moduleMutualRec of
     Right result -> putStrLn $ result
     Left err -> putStrLn $ "Error: " ++ err
 
@@ -16,6 +16,7 @@ myModule = createModule $ do
   addGlobal counter
   addGlobal immvar
   addFunc mathsqrt
+  addFunc add3
 
 myModule0 :: WasmModule
 myModule0 = createModule $ do
@@ -39,6 +40,14 @@ myModule3 = createModule $ do
   addFunc add3
   addFunc rgb
 
+moduleIndirect :: WasmModule
+moduleIndirect = createModule $ do
+  addFunc indirect1 -- should also includes indirect2, add3, rgb, sqrt, addCounter, counter and immvar
+
+moduleMutualRec :: WasmModule
+moduleMutualRec = createModule $ do
+  addFunc rec1 -- should also includes rec1, rec2, rec3, and not looping forever
+
 -- it should be that myModule1 ~~ myModule2 ~~ myModule3
 
 mathsqrt :: WasmFunc I32 () I32
@@ -61,6 +70,23 @@ addCounter = createExpFunction "addCounter" func
     i32_add #
     global_set counter
 
+indirect1 :: WasmFunc () () I32
+indirect1 = createExpFunction "indirect1" func
+  where
+    func _ _ _ =
+      call indirect2
+
+indirect2 :: WasmFunc () () I32
+indirect2 = createExpFunction "indirect2" func
+  where
+    func _ _ _ =
+      i32_const 1 #
+      call addCounter #
+      i32_const 0 #
+      i32_const 0 #
+      i32_const 0 #
+      call add3
+
 add3 :: WasmFunc (I32, I32, I32) () I32
 add3 = createExpFunction "add3" funcbody
   where
@@ -69,10 +95,10 @@ add3 = createExpFunction "add3" funcbody
     local_get b #
     local_get c #
     call rgb #
-    call mathsqrt 
+    call mathsqrt
 
 rgb :: WasmFunc (I32, I32, I32) (I32) I32
-rgb = createExpFunction "rgb" func
+rgb = createLocalFunction "rgb" func
   where
   func :: (Stack s) => (Var I32, Var I32, Var I32) -> Var I32 -> ReturnInstr s I32 -> FuncBody s I32
   func (r, g, b) l ret =
@@ -102,6 +128,42 @@ fact = createExpFunction "factorial" func
     i32_sub #
     call fact #
     i32_mul
+
+rec1 :: WasmFunc I32 () I32
+rec1 = createExpFunction "rec1" func where
+  func n _ ret =
+    block () I32 (\lbl ->
+      local_get n #
+      local_get n #
+      br_if lbl #
+      i32_const 1 #
+      i32_sub #
+      call rec2
+    )
+
+rec2 :: WasmFunc I32 () I32
+rec2 = createExpFunction "rec2" func where
+  func n _ ret =
+    block () I32 (\lbl ->
+      local_get n #
+      local_get n #
+      br_if lbl #
+      i32_const 1 #
+      i32_sub #
+      call rec3
+    )
+
+rec3 :: WasmFunc I32 () I32
+rec3 = createExpFunction "rec3" func where
+  func n _ ret =
+    block () I32 (\lbl ->
+      local_get n #
+      local_get n #
+      br_if lbl #
+      i32_const 1 #
+      i32_sub #
+      call rec1
+    )
 
 test1 :: WasmFunc () () (I32, I32)
 test1 = createExpFunction "test1" $ \_ _ ret -> (
