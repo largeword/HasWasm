@@ -224,7 +224,7 @@ implicitlyCalledFuncAdd funcs = do
         Just (FuncDecl (WasmFuncT _ _ p v r _) _) -> do
           if (p' == p) && (v' == v) && (r' == r) then implicitlyCalledFuncAdd fs
           else throwE $ "Called function " ++ name' ++ " is already declared but has different signature"
-        _ -> throwE $ "implicitlyCalledFuncAdd PANIC! Name is already declared but the called function is not a function: " ++ name'
+        _ -> throwE $ "Name is already declared but not a function: " ++ name'
 
       case expname' of
         Nothing -> return ()
@@ -238,7 +238,7 @@ implicitlyCalledImportAdd :: [ImportFuncT] -> ModuleBuilder ()
 implicitlyCalledImportAdd importFuncs = do
   case importFuncs of
     f : fs -> do
-      let func@(ImportFuncT _ imname locname p r) = f
+      let func@(ImportFuncT _ _ locname _ _) = f
       mod <- gets wasmmod
       case findIn declarations locname mod of
         Nothing -> do
@@ -247,7 +247,7 @@ implicitlyCalledImportAdd importFuncs = do
           updateMod (addImport locname func mod)
           implicitlyCalledImportAdd fs
         Just (ImportFuncDecl _) -> implicitlyCalledImportAdd fs
-        _ -> throwE $ "implicitlyCalledImportAdd PANIC! Name is already declared but the called function is not an import function: " ++ locname
+        _ -> throwE $ "Name is already declared but not a function: " ++ locname
     [] -> return ()
 
 -- Implicitly add called global variables
@@ -281,7 +281,7 @@ implicitlyCalledGVarAddHelper gVar = do
     Just (GlobalDecl name' expname' mutable' initVar' _) -> do
       if (expname == expname') && (isMutable mut == mutable') && (initVar == initVar') then return ()
       else throwE $ "Called global var " ++ name' ++ " is already declared but has different specs"
-    _ -> throwE $ "implicitlyCalledGVarAddHelper PANIC! Name is already declared but the called global var is not a global var: " ++ name
+    _ -> throwE $ "Name is already declared but not a global var: " ++ name
   case expname of
     Nothing -> return ()
     Just ename -> do
@@ -399,25 +399,27 @@ newPrintState :: PrintState
 newPrintState = PrintState {labelid = 0, tabs = moduleTab + 1}
 
 printInstr :: Instr -> State PrintState ShowS
-printInstr (Sequence instrs) =
-  foldl go (pure id) $ fmap printInstr instrs
-  where
-    go :: State PrintState ShowS -> State PrintState ShowS -> State PrintState ShowS
-    go acc m = do
-      s1 <- acc
-      s2 <- m
-      tab <- gets tabs
-      return $ s1 . (printTabs tab) . s2 . ("\n" ++)
+printInstr s@(Sequence _) = printInstrRec s
+printInstr i = do
+  tab <- gets tabs
+  s <- printInstrRec i
+  return $ (printTabs tab) . s . ("\n" ++)
 
-printInstr (I32Const i) = return $ ("i32.const " ++) . shows i
-printInstr (I32Binary b) = return $ ("i32." ++) . shows b
-printInstr (I32Unary u) = return $ ("i32." ++) . shows u
-printInstr (I32Compare r) = return $ ("i32." ++) . shows r
-printInstr (F32Const f) = return $ ("f32.const " ++) . shows f
-printInstr (F32Binary b) = return $ ("f32." ++) . shows b
-printInstr (F32Compare r) = return $ ("f32." ++) . shows r
-printInstr (F32Unary u ) = return $ ("f32." ++) . shows u
-printInstr (Block isLoop params results f ) =
+printInstrRec :: Instr -> State PrintState ShowS
+printInstrRec (Sequence instrs) =
+  foldr go (pure id) $ fmap printInstr instrs
+  where
+    go m acc = (.) <$> m <*> acc
+
+printInstrRec (I32Const i) = return $ ("i32.const " ++) . shows i
+printInstrRec (I32Binary b) = return $ ("i32." ++) . shows b
+printInstrRec (I32Unary u) = return $ ("i32." ++) . shows u
+printInstrRec (I32Compare r) = return $ ("i32." ++) . shows r
+printInstrRec (F32Const f) = return $ ("f32.const " ++) . shows f
+printInstrRec (F32Binary b) = return $ ("f32." ++) . shows b
+printInstrRec (F32Compare r) = return $ ("f32." ++) . shows r
+printInstrRec (F32Unary u ) = return $ ("f32." ++) . shows u
+printInstrRec (Block isLoop params results f ) =
   do
     ctx <- get
     let n = labelid ctx
@@ -433,23 +435,23 @@ printInstr (Block isLoop params results f ) =
       (printVars "param" params) .
       (printVars "result" results) . ("\n" ++) . s . (printTabs t) . (")" ++)
 
-printInstr (Branch l ) = return $ ("br " ++) . printLabel l
-printInstr (BranchIf l) = return $ ("br_if " ++) . printLabel l
-printInstr (Call (WasmFuncT name _ _ _ _ _) ) = return $ ("call " ++) . printName name
-printInstr (CallImport (ImportFuncT _ _ name _ _) ) = return $ ("call " ++) . printName name
-printInstr (Return ) = return ("return" ++)
-printInstr (LocalGet i) = return $ ("local.get " ++) . shows i
-printInstr (LocalSet i) = return $ ("local.set " ++) . shows i
+printInstrRec (Branch l ) = return $ ("br " ++) . printLabel l
+printInstrRec (BranchIf l) = return $ ("br_if " ++) . printLabel l
+printInstrRec (Call (WasmFuncT name _ _ _ _ _) ) = return $ ("call " ++) . printName name
+printInstrRec (CallImport (ImportFuncT _ _ name _ _) ) = return $ ("call " ++) . printName name
+printInstrRec Return = return ("return" ++)
+printInstrRec (LocalGet i) = return $ ("local.get " ++) . shows i
+printInstrRec (LocalSet i) = return $ ("local.set " ++) . shows i
 
-printInstr (GlobalGet (MutI32 (GlobalVar _ name _ _))) = return $ ("global.get " ++) . printName name
-printInstr (GlobalGet (ImmI32 (GlobalVar _ name _ _))) = return $ ("global.get " ++) . printName name
-printInstr (GlobalGet (MutF32 (GlobalVar _ name _ _))) = return $ ("global.get " ++) . printName name
-printInstr (GlobalGet (ImmF32 (GlobalVar _ name _ _))) = return $ ("global.get " ++) . printName name
+printInstrRec (GlobalGet (MutI32 (GlobalVar _ name _ _))) = return $ ("global.get " ++) . printName name
+printInstrRec (GlobalGet (ImmI32 (GlobalVar _ name _ _))) = return $ ("global.get " ++) . printName name
+printInstrRec (GlobalGet (MutF32 (GlobalVar _ name _ _))) = return $ ("global.get " ++) . printName name
+printInstrRec (GlobalGet (ImmF32 (GlobalVar _ name _ _))) = return $ ("global.get " ++) . printName name
 
-printInstr (GlobalSet (MutI32 (GlobalVar _ name _ _))) = return $ ("global.set " ++) . printName name
-printInstr (GlobalSet (ImmI32 (GlobalVar _ name _ _))) = return $ ("global.set " ++) . printName name
-printInstr (GlobalSet (MutF32 (GlobalVar _ name _ _))) = return $ ("global.set " ++) . printName name
-printInstr (GlobalSet (ImmF32 (GlobalVar _ name _ _))) = return $ ("global.set " ++) . printName name
+printInstrRec (GlobalSet (MutI32 (GlobalVar _ name _ _))) = return $ ("global.set " ++) . printName name
+printInstrRec (GlobalSet (ImmI32 (GlobalVar _ name _ _))) = return $ ("global.set " ++) . printName name
+printInstrRec (GlobalSet (MutF32 (GlobalVar _ name _ _))) = return $ ("global.set " ++) . printName name
+printInstrRec (GlobalSet (ImmF32 (GlobalVar _ name _ _))) = return $ ("global.set " ++) . printName name
 
 printLabel :: Int -> ShowS
 printLabel n = ("$l" ++) . shows n
