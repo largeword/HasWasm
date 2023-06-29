@@ -46,7 +46,7 @@ module HasWasm.Internal  (
   ReturnInstr,
   FuncBody,
   FuncCallType,
-  StackType,
+  StackType
 ) where
 
 import Data.Kind
@@ -174,16 +174,16 @@ instance Show (WasmFunc p v r) where
 data WasmFuncT = WasmFuncT String (Maybe String) [TypeTag] [TypeTag] [TypeTag] (Instr)
 
 instance Show WasmFuncT where
-  show (WasmFuncT name expname p v r instr) = "(WasmFuncT " ++ name ++ " " ++ show expname ++ " (param " ++ show p ++ ") (var " ++ show v ++") (result " ++ show r ++ ") " ++ show instr ++ ")"
+  show (WasmFuncT name expname p v r _) = "(WasmFuncT " ++ name ++ " " ++ show expname ++ " (param " ++ show p ++ ") (var " ++ show v ++") (result " ++ show r ++ "))"
 
 instance Eq WasmFuncT where
-  (WasmFuncT name1 expname1 p1 v1 r1 instr1) == (WasmFuncT name2 expname2 p2 v2 r2 instr2) =
-    name1 == name2 && expname1 == expname2 && p1 == p2 && v1 == v2 && r1 == r2 && instr1 == instr2
+  (WasmFuncT name1 expname1 p1 v1 r1 _) == (WasmFuncT name2 expname2 p2 v2 r2 _) =
+    name1 == name2 && expname1 == expname2 && p1 == p2 && v1 == v2 && r1 == r2
 
 data ImportFuncT = ImportFuncT String String String [TypeTag] [TypeTag]
 
 instance Show ImportFuncT where
-  show (ImportFuncT immod imname locname p r) = "(ImportFuncT " ++ immod ++ " " ++ locname ++ " " ++ locname ++ " (param " ++ show p ++ ") (result " ++ show r ++ "))"
+  show (ImportFuncT immod imname locname p r) = "(ImportFuncT " ++ immod ++ " " ++ imname ++ " " ++ locname ++ " (param " ++ show p ++ ") (result " ++ show r ++ "))"
 
 instance Eq ImportFuncT where
   (ImportFuncT immod1 imname1 locname1 p1 r1) == (ImportFuncT immod2 imname2 locname2 p2 r2) =
@@ -366,13 +366,19 @@ instance Show Instr where
   show (Block b typeP typeV _) = "block " ++ show b ++ " (" ++ show typeP ++ ") (" ++ show typeV ++ ")"
   show (Branch i) = "br " ++ show i
   show (BranchIf i) = "br_if " ++ show i
-  show (Call wasmFuncT) = "call " ++ show wasmFuncT
-  show (CallImport f) = "call " ++ show f
+  show (Call wasmFuncT) = "call " ++ getFuncTName wasmFuncT
+  show (CallImport f) = "call " ++ getImportTName f
   show Return = "return"
   show (LocalGet i) = "local.get " ++ show i
   show (LocalSet i) = "local.set " ++ show i
   show (GlobalGet _) = "global.get "
   show (GlobalSet _) = "global.set "
+
+getFuncTName :: WasmFuncT -> String
+getFuncTName (WasmFuncT n _ _ _ _ _) = n
+
+getImportTName :: ImportFuncT -> String
+getImportTName (ImportFuncT _ _ n _ _ ) = n
 
 instance Eq Instr where
   (Sequence s1) == (Sequence s2) = s1 == s2

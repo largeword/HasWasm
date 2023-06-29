@@ -79,7 +79,7 @@ updateMod mod = do
 {- Expicitly add functions -}
 
 addFunc :: WasmFunc p v r -> ModuleBuilder ()
-addFunc (WasmFunc _ func@(WasmFuncT name expname p v r funcBody)) = do
+addFunc (WasmFunc _ func@(WasmFuncT name expname p v r _)) = do
   let decl = FuncDecl func True
   mod <- gets wasmmod
   case findIn declarations name mod of
@@ -94,7 +94,7 @@ addFunc (WasmFunc _ func@(WasmFuncT name expname p v r funcBody)) = do
 
     Nothing -> do
       updateMod (addDeclaration name decl mod)
-      implicitlyCalledAdd funcBody
+      implicitlyCalledAdd func
     _ -> throwE $ "Name is already declared but not a function: " ++ name
 
   case expname of
@@ -199,13 +199,14 @@ lookupSeqCalledGVar funcBody gVarList =
       _ -> lookupSeqCalledGVar xs gVarList
 
 -- Implicitly add called functions, imported functions and global variables
-implicitlyCalledAdd :: Instr -> ModuleBuilder ()
-implicitlyCalledAdd funcBody = do
+implicitlyCalledAdd ::  WasmFuncT -> ModuleBuilder ()
+implicitlyCalledAdd func@(WasmFuncT _ _ _ _ _ funcBody) = do
   let funcList = lookupCalledFunc funcBody []
-  let nestedFuncList = lookupNestedCallFunc funcList []
-  let importFuncList = lookupNestedCalledImport nestedFuncList []
-  let gVarList = lookupNestedCalledGVar nestedFuncList []
-  implicitlyCalledFuncAdd (funcList ++ nestedFuncList)
+  let nestedFuncList = lookupNestedCallFunc funcList funcList
+  let allFunc = funcList ++ nestedFuncList
+  let importFuncList = lookupNestedCalledImport (func:allFunc) []
+  let gVarList = lookupNestedCalledGVar (func:allFunc) []
+  implicitlyCalledFuncAdd allFunc
   implicitlyCalledImportAdd importFuncList
   implicitlyCalledGVarAdd gVarList
 

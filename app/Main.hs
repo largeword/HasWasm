@@ -1,3 +1,5 @@
+-- This main module is an example of how HasWasm can be used
+
 {-# LANGUAGE RankNTypes #-}
 module Main where
 
@@ -6,17 +8,82 @@ import HasWasm.Instruction
 
 main :: IO ()
 main = do
-  case buildModule moduleIndirect of
+  case buildModule myModule of
     Right result -> putStrLn $ result
     Left err -> putStrLn $ "Error: " ++ err
 
 myModule :: WasmModule
 myModule = createModule $ do
-  addFunc addCounter
-  addGlobal counter
-  addGlobal immvar
-  addFunc mathsqrt
-  addFunc add3
+  addFunc factorial
+  addFunc factorialRec
+  addFunc incCounter
+
+factorial :: WasmFunc I32 () I32
+factorial = createExpFunction "factorial" func
+  where
+  func n () ret =
+    i32_const 1 #
+    block (I32) (I32) (\end->
+      loop (I32) (I32) (\start ->
+        local_get n #
+        i32_const 1 #
+        i32_le_s #
+        br_if end #    -- if n <= 1, jump to end
+        local_get n #
+        i32_mul #      -- total = total * n
+        local_get n #
+        i32_const 1 #
+        i32_sub #
+        local_set n #  -- set n = n - 1
+        br start       -- loop back
+      )
+    )
+
+factorialRec :: WasmFunc I32 () I32
+factorialRec = createExpFunction "factorial_rec" func
+  where
+  func n _ ret =
+    block () () (\lbl ->
+      local_get n #
+      br_if lbl #
+      i32_const 1 #
+      ret
+    ) #
+    local_get n #
+    local_get n #
+    i32_const 1 #
+    i32_sub #
+    call factorialRec #
+    i32_mul
+
+incCounter :: WasmFunc () () ()
+incCounter = createExpFunction "inc_counter" func
+  where
+  func _ _ _ =
+    global_get counter #
+    call addByConst #
+    global_set counter #
+    global_get counter #
+    call consoleLog
+
+addByConst :: WasmFunc I32 () I32
+addByConst = createLocalFunction "addByConst" func
+  where
+  func i _ _ =
+    local_get i #
+    global_get constant #
+    i32_add
+
+counter :: GlobalVar Mut I32
+counter = createGlobalI32 "counter" (Just "counter") 0
+
+constant :: GlobalVar Imm I32
+constant = createGlobalI32 "constant" Nothing 1
+
+consoleLog :: WasmFunc I32 () ()
+consoleLog = createImportFunction "console" "log" "console_log"
+
+-- other examples
 
 myModule0 :: WasmModule
 myModule0 = createModule $ do
@@ -53,18 +120,12 @@ moduleMutualRec = createModule $ do
 mathsqrt :: WasmFunc I32 () I32
 mathsqrt = createImportFunction "Math" "sqrt" "sqrt"
 
-counter :: GlobalVar Mut I32
-counter = createGlobalI32 "counter" (Just "counter") 0
-
-immvar :: GlobalVar Imm I32
-immvar = createGlobalI32 "immvar" Nothing 0
-
 addCounter :: WasmFunc (I32) () ()
 addCounter = createExpFunction "addCounter" func
   where
   func i _ _ =
     global_get counter #
-    global_get immvar #
+    global_get constant #
     local_get i #
     i32_add #
     i32_add #
@@ -112,23 +173,6 @@ rgb = createLocalFunction "rgb" func
     local_get b #
     i32_add
 
-fact :: WasmFunc I32 () I32
-fact = createExpFunction "factorial" func
-  where
-  func n _ ret =
-    block () () (\lbl ->
-      local_get n #
-      br_if lbl #
-      i32_const 1 #
-      ret
-    ) #
-    local_get n #
-    local_get n #
-    i32_const 1 #
-    i32_sub #
-    call fact #
-    i32_mul
-
 rec1 :: WasmFunc I32 () I32
 rec1 = createExpFunction "rec1" func where
   func n _ ret =
@@ -158,7 +202,7 @@ rec3 = createExpFunction "rec3" func where
   func n _ ret =
     block () I32 (\lbl ->
       global_get counter #
-      global_get immvar #
+      global_get constant #
       br_if lbl #
       i32_const 1 #
       i32_sub #
