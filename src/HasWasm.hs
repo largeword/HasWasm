@@ -202,7 +202,7 @@ lookupSeqCalledGVar funcBody gVarList =
 implicitlyCalledAdd ::  WasmFuncT -> ModuleBuilder ()
 implicitlyCalledAdd func@(WasmFuncT _ _ _ _ _ funcBody) = do
   let funcList = lookupCalledFunc funcBody []
-  let nestedFuncList = lookupNestedCallFunc funcList funcList
+  let nestedFuncList = lookupNestedCallFunc funcList []
   let allFunc = funcList ++ nestedFuncList
   let importFuncList = lookupNestedCalledImport (func:allFunc) []
   let gVarList = lookupNestedCalledGVar (func:allFunc) []
