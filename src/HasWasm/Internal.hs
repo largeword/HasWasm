@@ -175,10 +175,12 @@ data WasmFuncT = WasmFuncT String (Maybe String) [TypeTag] [TypeTag] [TypeTag] (
 
 instance Show WasmFuncT where
   show (WasmFuncT name expname p v r _) = "(WasmFuncT " ++ name ++ " " ++ show expname ++ " (param " ++ show p ++ ") (var " ++ show v ++") (result " ++ show r ++ "))"
+  -- does not show the body to prevent infinite loop
 
 instance Eq WasmFuncT where
   (WasmFuncT name1 expname1 p1 v1 r1 _) == (WasmFuncT name2 expname2 p2 v2 r2 _) =
     name1 == name2 && expname1 == expname2 && p1 == p2 && v1 == v2 && r1 == r2
+    -- does not compare the body to prevent infinite loop
 
 data ImportFuncT = ImportFuncT String String String [TypeTag] [TypeTag]
 
