@@ -8,6 +8,9 @@ import Test.Tasty.HUnit
 main :: IO ()
 main = defaultMain $ testGroup "Build Module Test" [
     testUnaryI32,
+    testUnaryF32,
+    testBinaryI32,
+    testBinaryF32,
     testIndirectAdd,
     testIndirectAdd2,
     testMutualRec
@@ -26,6 +29,46 @@ testUnaryI32 = testCase "unary instructions" $ do
         local_get n #
         i32_eqz #
         ret
+
+testUnaryF32 :: TestTree
+testUnaryF32 = testCase "unary instructions" $ do
+  assertModule (singleFunc unaryF32) $
+    singleFuncFormat "unary" "(param f32)" "(result f32)" "" "local.get 0 f32.neg return"
+  where
+    unaryF32 :: WasmFunc F32 () F32
+    unaryF32 = createLocalFunction "unary" $
+      \n _ ret ->
+        local_get n #
+        f32_neg #
+        ret
+
+testBinaryI32 :: TestTree
+testBinaryI32 = testCase "binary instructions" $ do
+  assertModule (singleFunc binaryI32) $
+    singleFuncFormat "binary" "(param i32 i32)" "(result i32)" "" "local.get 0 local.get 1 i32.add return"
+  where
+    binaryI32 :: WasmFunc (I32, I32) () I32
+    binaryI32 = createLocalFunction "binary" $
+      \(a, b) _ ret ->
+        local_get a #
+        local_get b #
+        i32_add #
+        ret
+
+testBinaryF32 :: TestTree
+testBinaryF32 = testCase "binary instructions" $ do
+  assertModule (singleFunc binaryF32) $
+    singleFuncFormat "binary" "(param f32 f32)" "(result f32)" "" "local.get 0 local.get 1 f32.add return"
+  where
+    binaryF32 :: WasmFunc (F32, F32) () F32
+    binaryF32 = createLocalFunction "binary" $
+      \(a, b) _ ret ->
+        local_get a #
+        local_get b #
+        f32_add #
+        ret
+
+{- Module building test -}
 
 testIndirectAdd :: TestTree
 testIndirectAdd = testCase "indirect add 1" $ do
