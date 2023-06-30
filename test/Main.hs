@@ -16,6 +16,7 @@ main = defaultMain $ testGroup "Build Module Test" [
     testMutualRec
   ]
 
+
 {- Instruction building test -}
 
 testUnaryI32 :: TestTree
@@ -67,6 +68,7 @@ testBinaryF32 = testCase "binary instructions" $ do
         local_get b #
         f32_add #
         ret
+
 
 {- Module building test -}
 
