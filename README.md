@@ -12,7 +12,7 @@ This project is aimed to create a type-safe, expressive embedded DSL for WebAsse
 
 
 ## Usage
-Please refer to the **Results and Discussion section** of [doc](./DSL_Assignment2_Report.pdf).
+Please refer to the **Results and Discussion section** of [doc](./docs/DSL_Assignment2_Report.pdf).
 
 
 ## Contributors
