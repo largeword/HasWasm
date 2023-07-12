@@ -1,5 +1,5 @@
 # HasWasm
-
+A WebAssembly-like Embedded DSL in Haskell
 
 ## Introduction
 HasWasm is a domain-specific language (DSL) that is integrated into Haskell, which is also based on the course project of [Domain Specific Languages](https://www.cs.uu.nl/docs/vakken/dsl/index.html) at Utrecht University. 
